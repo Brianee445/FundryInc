@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { Container } from "@/components/ui/Container";
+import { Container } from "@/app/components/ui/Container";
 import { UserPlus, ShieldCheck, Handshake } from "lucide-react";
 
 const steps = [
