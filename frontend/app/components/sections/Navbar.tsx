@@ -3,8 +3,8 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Container } from "@/components/ui/Container";
+import { Button } from "@/app/components/ui/Button";
+import { Container } from "@/app/components/ui/Container";
 
 const navLinks = ["Features", "Spotlight", "Pricing", "About", "Contact"];
 
