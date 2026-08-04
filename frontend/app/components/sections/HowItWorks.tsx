@@ -1,12 +1,12 @@
 "use client";
 import { motion } from "framer-motion";
 import { Container } from "@/app/components/ui/Container";
-import { UserPlus, ShieldCheck, Handcoins } from "lucide-react";
+import { UserPlus, ShieldCheck, Handcoin } from "lucide-react";
 
 const steps = [
   { icon: UserPlus, title: "Create Profile", desc: "Sign up and showcase your startup journey." },
   { icon: ShieldCheck, title: "Get Verified", desc: "Complete KYC to unlock trust badges." },
-  { icon: Handcoins, title: "Connect With Investors", desc: "Pitch, network, and raise capital." },
+  { icon: Handcoin, title: "Connect With Investors", desc: "Pitch, network, and raise capital." },
 ];
 
 export function HowItWorks() {
