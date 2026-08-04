@@ -1,4 +1,4 @@
-import { Container } from "@/components/ui/Container";
+import { Container } from "@/app/components/ui/Container";
 import { Twitter, Linkedin, Youtube } from "lucide-react";
 
 const footerLinks = {
