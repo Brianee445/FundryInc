@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export const metadata: Metadata = {
   title: "Fundry – Connect Founders with Investors",
