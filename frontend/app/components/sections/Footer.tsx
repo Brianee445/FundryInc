@@ -39,6 +39,6 @@ export function Footer() {
           &copy; {new Date().getFullYear()} Fundry. All rights reserved.
         </div>
       </Container>
-    </section>
+    </footer>
   );
 }
