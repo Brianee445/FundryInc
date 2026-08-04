@@ -1,7 +1,7 @@
 "use client";
 import { motion } from "framer-motion";
-import { Container } from "@/components/ui/Container";
-import { Button } from "@/components/ui/Button";
+import { Container } from "@/app/components/ui/Container";
+import { Button } from "@/app/components/ui/Button";
 import Link from "next/link";
 
 export function CTA() {
