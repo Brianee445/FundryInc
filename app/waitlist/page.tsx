@@ -1,85 +1,101 @@
-"use client";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Button } from "@/app/components/ui/Button";
-import { Input } from "@/app/components/ui/Input";
-import { Select } from "@/app/components/ui/Select";
-import { Container } from "@/app/components/ui/Container";
-import api from "@/app/lib/api";
-import { useState } from "react";
-import { CheckCircle, Shield, Clock, Award } from "lucide-react";
-import Link from "next/link";
+'use client';
+
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import Link from 'next/link';
+import { CheckCircle, Shield, Clock, Award } from 'lucide-react';
+import { Button } from '@/app/components/ui/Button';
+import { Input } from '@/app/components/ui/Input';
+import { Select } from '@/app/components/ui/Select';
+import { Container } from '@/app/components/ui/Container';
+import { Logo } from '@/app/components/layout/Logo';
+import { apiPost, ApiError } from '@/app/lib/api';
 
 const schema = z.object({
-  email: z.string().email("Invalid email address"),
-  role: z.enum(["founder", "investor", "advisor", "accelerator"]),
+  email: z.string().email('Invalid email address'),
+  role_interest: z.enum(['founder', 'investor', 'advisor', 'accelerator']),
 });
 
 type FormData = z.infer<typeof schema>;
 
+const BENEFITS = [
+  { icon: Clock, title: 'Priority Access', desc: 'Be the first to join when we launch.' },
+  { icon: Shield, title: 'Verification Discount', desc: 'Get 50% off KYC verification fees.' },
+  { icon: Award, title: 'Exclusive Interviews', desc: 'Access to premium founder stories.' },
+  { icon: CheckCircle, title: 'Early Launch Rewards', desc: 'Special perks for early adopters.' },
+];
+
 export default function WaitlistPage() {
-  const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  });
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<FormData>({ resolver: zodResolver(schema) });
   const [success, setSuccess] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
 
   const onSubmit = async (data: FormData) => {
-    setError("");
+    setError('');
     try {
-      await api.post("/api/v1/waitlist", data);
+      // Matches the backend's WaitlistCreate schema: { email, role_interest, startup_or_firm_name? }
+      await apiPost('/api/v1/waitlist', data);
       setSuccess(true);
       reset();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Something went wrong. Please try again.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     }
   };
 
-  const benefits = [
-    { icon: Clock, title: "Priority Access", desc: "Be the first to join when we launch." },
-    { icon: Shield, title: "Verification Discount", desc: "Get 50% off KYC verification fees." },
-    { icon: Award, title: "Exclusive Interviews", desc: "Access to premium founder stories." },
-    { icon: CheckCircle, title: "Early Launch Rewards", desc: "Special perks for early adopters." },
-  ];
-
   return (
-    <main className="min-h-screen bg-background flex flex-col justify-center py-16">
-      <Container className="max-w-[700px] mx-auto">
-        <div className="text-center mb-12">
-          <Link href="/" className="inline-flex items-center gap-2 text-2xl font-bold mb-6">Fundry</Link>
-          <h1 className="text-4xl md:text-5xl font-bold">Join the Future of Startup Funding</h1>
-          <p className="text-secondaryText text-lg mt-2">Get exclusive early access to Fundry.</p>
+    <main className="flex min-h-screen flex-col justify-center bg-background py-16">
+      <Container className="mx-auto max-w-[700px]">
+        <div className="mb-12 text-center">
+          <Logo className="mb-6 justify-center" />
+          <h1 className="text-4xl font-bold md:text-5xl">Join the Future of Startup Funding</h1>
+          <p className="mt-2 text-lg text-secondaryText">Get exclusive early access to Fundry.</p>
         </div>
 
         {success ? (
-          <div className="bg-cardBg border border-borderColor rounded-card p-8 text-center">
-            <CheckCircle size={56} className="text-success mx-auto mb-4" />
-            <h2 className="text-2xl font-bold">You're on the list!</h2>
-            <p className="text-secondaryText mt-2">We'll notify you the moment we launch.</p>
+          <div className="rounded-card border border-borderColor bg-cardBg p-8 text-center">
+            <CheckCircle size={56} className="mx-auto mb-4 text-success" />
+            <h2 className="text-2xl font-bold">You&apos;re on the list!</h2>
+            <p className="mt-2 text-secondaryText">We&apos;ll notify you the moment we launch.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit(onSubmit)} className="bg-cardBg border border-borderColor rounded-card p-8 space-y-6">
-            {error && <div className="bg-error/10 border border-error text-error p-4 rounded-[14px] text-sm">{error}</div>}
-            
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 rounded-card border border-borderColor bg-cardBg p-8">
+            {error && (
+              <div className="rounded-[14px] border border-error bg-error/10 p-4 text-sm text-error">{error}</div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-secondaryText mb-1">Email Address</label>
-              <Input {...register("email")} placeholder="you@startup.com" />
-              {errors.email && <p className="text-error text-sm mt-1">{errors.email.message}</p>}
+              <label htmlFor="email" className="mb-1 block text-sm font-medium text-secondaryText">
+                Email Address
+              </label>
+              <Input id="email" type="email" placeholder="you@startup.com" {...register('email')} />
+              {errors.email && <p className="mt-1 text-sm text-error">{errors.email.message}</p>}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-secondaryText mb-1">I am a</label>
-              <Select {...register("role")}>
+              <label htmlFor="role_interest" className="mb-1 block text-sm font-medium text-secondaryText">
+                I am a
+              </label>
+              <Select id="role_interest" defaultValue="" {...register('role_interest')}>
+                <option value="" disabled>
+                  Select one
+                </option>
                 <option value="founder">Founder</option>
                 <option value="investor">Investor</option>
                 <option value="advisor">Advisor</option>
                 <option value="accelerator">Accelerator</option>
               </Select>
+              {errors.role_interest && <p className="mt-1 text-sm text-error">{errors.role_interest.message}</p>}
             </div>
 
-            <Button variant="primary" size="lg" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Joining..." : "Join Waitlist"}
+            <Button type="submit" variant="primary" size="lg" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Joining...' : 'Join Waitlist'}
             </Button>
 
             <div className="text-center text-sm text-secondaryText">
@@ -88,15 +104,24 @@ export default function WaitlistPage() {
           </form>
         )}
 
-        <div className="grid grid-cols-2 gap-4 mt-12">
-          {benefits.map((b) => (
-            <div key={b.title} className="bg-secondaryBg/50 border border-borderColor rounded-[16px] p-4 flex flex-col items-center text-center">
-              <b.icon size={24} className="text-primaryBlue mb-2" />
-              <h4 className="font-semibold text-sm">{b.title}</h4>
-              <p className="text-secondaryText text-xs">{b.desc}</p>
+        <div className="mt-12 grid grid-cols-2 gap-4">
+          {BENEFITS.map((benefit) => (
+            <div
+              key={benefit.title}
+              className="flex flex-col items-center rounded-[16px] border border-borderColor bg-secondaryBg/50 p-4 text-center"
+            >
+              <benefit.icon size={24} className="mb-2 text-primaryBlue" />
+              <h4 className="text-sm font-semibold">{benefit.title}</h4>
+              <p className="text-xs text-secondaryText">{benefit.desc}</p>
             </div>
           ))}
         </div>
+
+        <p className="mt-8 text-center text-sm text-secondaryText">
+          <Link href="/" className="hover:text-primaryText">
+            &larr; Back to home
+          </Link>
+        </p>
       </Container>
     </main>
   );
