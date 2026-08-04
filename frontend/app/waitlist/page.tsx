@@ -2,11 +2,11 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Container } from "@/components/ui/Container";
-import api from "@/lib/api";
+import { Button } from "@/app/components/ui/Button";
+import { Input } from "@/app/components/ui/Input";
+import { Select } from "@/app/components/ui/Select";
+import { Container } from "@/app/components/ui/Container";
+import api from "@/app/lib/api";
 import { useState } from "react";
 import { CheckCircle, Shield, Clock, Award } from "lucide-react";
 import Link from "next/link";
