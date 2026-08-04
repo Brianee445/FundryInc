@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { Container } from "@/components/ui/Container";
+import { Container } from "@/app/components/ui/Container";
 
 const stats = [
   { label: "Capital Raised", value: "$120M+" },
