@@ -8,7 +8,27 @@ export class ApiError extends Error {
   }
 }
 
-/** Minimal typed fetch wrapper — avoids pulling in axios for a two-endpoint marketing site. */
+/** FastAPI validation errors (422) return `detail` as an array of
+ * { loc, msg, type } objects, not a string. Extract something readable
+ * instead of letting it fall through to Error's default stringification
+ * (which silently produces the literal string "[object Object]"). */
+function extractErrorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== 'object') return fallback;
+  const detail = (data as Record<string, unknown>).detail ?? (data as Record<string, unknown>).message;
+
+  if (typeof detail === 'string') return detail;
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => (item && typeof item === 'object' && 'msg' in item ? String((item as { msg: unknown }).msg) : null))
+      .filter(Boolean);
+    if (messages.length) return messages.join(' ');
+  }
+
+  return fallback;
+}
+
+/** Minimal typed fetch wrapper. */
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
@@ -20,8 +40,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const data = isJson ? await res.json() : undefined;
 
   if (!res.ok) {
-    const message = (data && (data.detail || data.message)) || res.statusText || 'Request failed';
-    throw new ApiError(message, res.status);
+    throw new ApiError(extractErrorMessage(data, res.statusText || 'Request failed'), res.status);
   }
   return data as T;
 }
