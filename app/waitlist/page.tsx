@@ -13,12 +13,19 @@ import { Container } from '@/app/components/ui/Container';
 import { Logo } from '@/app/components/layout/Logo';
 import { apiPost, ApiError } from '@/app/lib/api';
 
+// Matches the backend's WaitlistCreate schema exactly:
+// { email: EmailStr, role: "founder" | "investor" | "advisor" | "accelerator" }
 const schema = z.object({
   email: z.string().email('Invalid email address'),
-  role_interest: z.enum(['founder', 'investor', 'advisor', 'accelerator']),
+  role: z.enum(['founder', 'investor', 'advisor', 'accelerator']),
 });
 
 type FormData = z.infer<typeof schema>;
+
+interface WaitlistResponse {
+  success: boolean;
+  message: string;
+}
 
 const BENEFITS = [
   { icon: Clock, title: 'Priority Access', desc: 'Be the first to join when we launch.' },
@@ -40,10 +47,17 @@ export default function WaitlistPage() {
   const onSubmit = async (data: FormData) => {
     setError('');
     try {
-      // Matches the backend's WaitlistCreate schema: { email, role_interest, startup_or_firm_name? }
-      await apiPost('/api/v1/waitlist', data);
-      setSuccess(true);
-      reset();
+      // Trailing slash is required — the backend route is defined as
+      // @router.post("/") under prefix "/api/v1/waitlist", so the real
+      // path is "/api/v1/waitlist/". Without the slash, FastAPI 307-redirects,
+      // which breaks the CORS preflight on a cross-origin POST.
+      const result = await apiPost<WaitlistResponse>('/api/v1/waitlist/', data);
+      if (result.success) {
+        setSuccess(true);
+        reset();
+      } else {
+        setError(result.message || 'Something went wrong. Please try again.');
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     }
@@ -79,10 +93,10 @@ export default function WaitlistPage() {
             </div>
 
             <div>
-              <label htmlFor="role_interest" className="mb-1 block text-sm font-medium text-secondaryText">
+              <label htmlFor="role" className="mb-1 block text-sm font-medium text-secondaryText">
                 I am a
               </label>
-              <Select id="role_interest" defaultValue="" {...register('role_interest')}>
+              <Select id="role" defaultValue="" {...register('role')}>
                 <option value="" disabled>
                   Select one
                 </option>
@@ -91,7 +105,7 @@ export default function WaitlistPage() {
                 <option value="advisor">Advisor</option>
                 <option value="accelerator">Accelerator</option>
               </Select>
-              {errors.role_interest && <p className="mt-1 text-sm text-error">{errors.role_interest.message}</p>}
+              {errors.role && <p className="mt-1 text-sm text-error">{errors.role.message}</p>}
             </div>
 
             <Button type="submit" variant="primary" size="lg" className="w-full" disabled={isSubmitting}>
