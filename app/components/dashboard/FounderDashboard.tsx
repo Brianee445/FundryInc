@@ -85,15 +85,15 @@ export function FounderDashboard() {
     }
   }, [reset]);
 
-  const loadConnections = useCallback(async () => {
-    setIsLoadingConnections(true);
+  const loadConnections = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setIsLoadingConnections(true);
     try {
       const data = await apiGet<ConnectionRequestRecord[]>('/api/v1/connections/received');
       setConnections(data);
     } catch {
       // Non-critical for the page to function — the profile section still works on its own.
     } finally {
-      setIsLoadingConnections(false);
+      if (!opts?.silent) setIsLoadingConnections(false);
     }
   }, []);
 
@@ -104,9 +104,10 @@ export function FounderDashboard() {
 
   // Without this, a request accepted/declined elsewhere (or a new incoming
   // request) never shows up while this dashboard stays open — same staleness
-  // issue as the investor's "sent" tab (see InvestorDashboard.tsx).
+  // issue as the investor's "sent" tab (see InvestorDashboard.tsx). Silent so
+  // the list doesn't flash back to a loading state on every poll tick.
   useEffect(() => {
-    const interval = setInterval(loadConnections, 8000);
+    const interval = setInterval(() => loadConnections({ silent: true }), 8000);
     return () => clearInterval(interval);
   }, [loadConnections]);
 

@@ -73,14 +73,14 @@ export function InvestorDashboard() {
     }
   }, []);
 
-  const loadSent = useCallback(async () => {
-    setIsLoadingSent(true);
+  const loadSent = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setIsLoadingSent(true);
     try {
       setSent(await apiGet<ConnectionRequestRecord[]>('/api/v1/connections/sent'));
     } catch {
       // non-critical
     } finally {
-      setIsLoadingSent(false);
+      if (!opts?.silent) setIsLoadingSent(false);
     }
   }, []);
 
@@ -96,13 +96,14 @@ export function InvestorDashboard() {
   // `sent` only reflects each connection's status as of the last fetch — if
   // the founder accepts/declines while the investor is already sitting on
   // this dashboard, the Message button gated on `status === 'accepted'`
-  // would otherwise never appear without a hard refresh. Refetch whenever
+  // would otherwise never appear without a hard refresh. Refetch (silently,
+  // so the list doesn't flash back to a loading state every cycle) whenever
   // the investor switches to this tab, and lightly poll while it's active
   // so an accept that happens mid-session still shows up.
   useEffect(() => {
     if (tab !== 'sent') return;
-    loadSent();
-    const interval = setInterval(loadSent, 8000);
+    loadSent({ silent: true });
+    const interval = setInterval(() => loadSent({ silent: true }), 8000);
     return () => clearInterval(interval);
   }, [tab, loadSent]);
 
