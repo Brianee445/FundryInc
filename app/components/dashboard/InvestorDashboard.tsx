@@ -94,6 +94,19 @@ export function InvestorDashboard() {
     loadSent();
   }, [loadSaved, loadSent]);
 
+  // `sent` only reflects each connection's status as of the last fetch — if
+  // the founder accepts/declines while the investor is already sitting on
+  // this dashboard, the Message button gated on `status === 'accepted'`
+  // would otherwise never appear without a hard refresh. Refetch whenever
+  // the investor switches to this tab, and lightly poll while it's active
+  // so an accept that happens mid-session still shows up.
+  useEffect(() => {
+    if (tab !== 'sent') return;
+    loadSent();
+    const interval = setInterval(loadSent, 8000);
+    return () => clearInterval(interval);
+  }, [tab, loadSent]);
+
   const toggleSave = async (profile: FounderProfile) => {
     setActionError('');
     setPendingProfileId(profile.id);
