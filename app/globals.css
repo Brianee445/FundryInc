@@ -5,8 +5,43 @@
 @tailwind utilities;
 
 @layer base {
+  /* Light is the default (:root) so the app never flashes unstyled;
+     ThemeProvider adds/removes .dark on <html> to switch. Values are
+     R G B triplets (no commas) so Tailwind's <alpha-value> opacity
+     modifiers work, e.g. bg-cardBg/50. */
+  :root {
+    --color-background: 255 255 255;
+    --color-secondary-bg: 241 245 249;
+    --color-card-bg: 255 255 255;
+    --color-border: 226 232 240;
+    --color-primary-blue: 37 99 235;
+    --color-hover-blue: 59 130 246;
+    --color-accent-cyan: 2 132 199;
+    --color-success: 22 163 74;
+    --color-warning: 217 119 6;
+    --color-error: 220 38 38;
+    --color-primary-text: 15 23 42;
+    --color-secondary-text: 71 85 105;
+  }
+
+  .dark {
+    /* Unchanged from the original dark-only palette. */
+    --color-background: 9 9 11;
+    --color-secondary-bg: 17 24 39;
+    --color-card-bg: 22 27 34;
+    --color-border: 38 47 61;
+    --color-primary-blue: 37 99 235;
+    --color-hover-blue: 59 130 246;
+    --color-accent-cyan: 56 189 248;
+    --color-success: 34 197 94;
+    --color-warning: 245 158 11;
+    --color-error: 239 68 68;
+    --color-primary-text: 255 255 255;
+    --color-secondary-text: 148 163 184;
+  }
+
   body {
-    @apply bg-background text-primaryText antialiased overflow-x-hidden;
+    @apply bg-background text-primaryText antialiased overflow-x-hidden transition-colors duration-200;
   }
   html {
     scroll-behavior: smooth;

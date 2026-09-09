@@ -34,6 +34,9 @@ export interface FounderProfile {
   location_city: string | null;
   pitch_deck_url: string | null;
   demo_video_url: string | null;
+  profile_picture_url: string | null;
+  gallery_image_urls: string[];
+  startup_link: string | null;
   contact_visibility: ContactVisibility;
   verification_tier: VerificationTier;
   published: boolean;
@@ -55,6 +58,9 @@ export interface FounderProfileInput {
   location_city?: string;
   pitch_deck_url?: string;
   demo_video_url?: string;
+  profile_picture_url?: string;
+  gallery_image_urls?: string[];
+  startup_link?: string;
   contact_visibility: ContactVisibility;
 }
 
@@ -64,4 +70,13 @@ export interface FounderDirectoryFilters {
   funding_min?: number;
   funding_max?: number;
   search?: string;
+}
+
+/** Response shape from GET /api/v1/link-preview?url=... */
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  site_name: string | null;
 }

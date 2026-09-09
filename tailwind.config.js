@@ -1,21 +1,25 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: ['./app/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
-        background: '#09090B',
-        secondaryBg: '#111827',
-        cardBg: '#161B22',
-        borderColor: '#262F3D',
-        primaryBlue: '#2563EB',
-        hoverBlue: '#3B82F6',
-        accentCyan: '#38BDF8',
-        success: '#22C55E',
-        warning: '#F59E0B',
-        error: '#EF4444',
-        primaryText: '#FFFFFF',
-        secondaryText: '#94A3B8',
+        // Each token reads from a CSS variable set in globals.css, one set
+        // for :root (light) and one for .dark. The `<alpha-value>` bit lets
+        // Tailwind opacity modifiers (e.g. bg-cardBg/50) keep working.
+        background: 'rgb(var(--color-background) / <alpha-value>)',
+        secondaryBg: 'rgb(var(--color-secondary-bg) / <alpha-value>)',
+        cardBg: 'rgb(var(--color-card-bg) / <alpha-value>)',
+        borderColor: 'rgb(var(--color-border) / <alpha-value>)',
+        primaryBlue: 'rgb(var(--color-primary-blue) / <alpha-value>)',
+        hoverBlue: 'rgb(var(--color-hover-blue) / <alpha-value>)',
+        accentCyan: 'rgb(var(--color-accent-cyan) / <alpha-value>)',
+        success: 'rgb(var(--color-success) / <alpha-value>)',
+        warning: 'rgb(var(--color-warning) / <alpha-value>)',
+        error: 'rgb(var(--color-error) / <alpha-value>)',
+        primaryText: 'rgb(var(--color-primary-text) / <alpha-value>)',
+        secondaryText: 'rgb(var(--color-secondary-text) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Satoshi', 'General Sans', 'Inter', 'sans-serif'],

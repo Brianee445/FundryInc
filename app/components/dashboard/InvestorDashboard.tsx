@@ -6,6 +6,8 @@ import { Input } from '@/app/components/ui/Input';
 import { Select } from '@/app/components/ui/Select';
 import { Textarea } from '@/app/components/ui/Textarea';
 import { Badge } from '@/app/components/ui/Badge';
+import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
+import { ChatPanel } from '@/app/components/dashboard/ChatPanel';
 import { apiDelete, apiGet, apiPost, ApiError } from '@/app/lib/api';
 import {
   STAGE_LABELS,
@@ -47,6 +49,7 @@ export function InvestorDashboard() {
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [pendingProfileId, setPendingProfileId] = useState<string | null>(null);
+  const [openChatId, setOpenChatId] = useState<string | null>(null);
 
   const loadProfiles = useCallback(async () => {
     setIsLoadingProfiles(true);
@@ -133,20 +136,30 @@ export function InvestorDashboard() {
   const renderProfileCard = (profile: FounderProfile) => (
     <li key={profile.id} className="rounded-input border border-borderColor bg-secondaryBg p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-lg font-semibold">{profile.startup_name}</h3>
-            <Badge tone="info">{VERIFICATION_LABELS[profile.verification_tier]}</Badge>
+        <div className="flex items-start gap-3">
+          {profile.profile_picture_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={profile.profile_picture_url}
+              alt={profile.startup_name}
+              className="h-12 w-12 shrink-0 rounded-full border border-borderColor object-cover"
+            />
+          )}
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-semibold">{profile.startup_name}</h3>
+              <Badge tone="info">{VERIFICATION_LABELS[profile.verification_tier]}</Badge>
+            </div>
+            {profile.tagline && <p className="mt-1 text-sm text-secondaryText">{profile.tagline}</p>}
+            <p className="mt-1 text-xs text-secondaryText">
+              {STAGE_LABELS[profile.stage]}
+              {profile.sector ? ` · ${profile.sector}` : ''}
+              {profile.location_city ? ` · ${profile.location_city}` : ''}
+              {profile.funding_ask_min || profile.funding_ask_max
+                ? ` · Asking $${(profile.funding_ask_min ?? 0).toLocaleString()}–$${(profile.funding_ask_max ?? 0).toLocaleString()}`
+                : ''}
+            </p>
           </div>
-          {profile.tagline && <p className="mt-1 text-sm text-secondaryText">{profile.tagline}</p>}
-          <p className="mt-1 text-xs text-secondaryText">
-            {STAGE_LABELS[profile.stage]}
-            {profile.sector ? ` · ${profile.sector}` : ''}
-            {profile.location_city ? ` · ${profile.location_city}` : ''}
-            {profile.funding_ask_min || profile.funding_ask_max
-              ? ` · Asking $${(profile.funding_ask_min ?? 0).toLocaleString()}–$${(profile.funding_ask_max ?? 0).toLocaleString()}`
-              : ''}
-          </p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -165,6 +178,30 @@ export function InvestorDashboard() {
           </Button>
         </div>
       </div>
+
+      {profile.startup_link && (
+        <div className="mt-3">
+          <LinkPreviewCard url={profile.startup_link} />
+        </div>
+      )}
+
+      {profile.gallery_image_urls.length > 0 && (
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {profile.gallery_image_urls.slice(0, 4).map((src) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={src} src={src} alt="" className="h-20 w-full rounded-input border border-borderColor object-cover" />
+          ))}
+        </div>
+      )}
+
+      {profile.demo_video_url && (
+        // eslint-disable-next-line jsx-a11y/media-has-caption
+        <video
+          src={profile.demo_video_url}
+          controls
+          className="mt-3 max-h-64 w-full rounded-input border border-borderColor"
+        />
+      )}
 
       {profile.contact && (
         <p className="mt-3 text-sm text-success">Contact unlocked: {profile.contact.email}</p>
@@ -297,6 +334,25 @@ export function InvestorDashboard() {
                   <p className="mt-1 text-xs text-secondaryText">
                     Sent {new Date(connection.created_at).toLocaleDateString()}
                   </p>
+                  {connection.status === 'accepted' && (
+                    <div className="mt-3">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setOpenChatId(openChatId === connection.id ? null : connection.id)}
+                      >
+                        {openChatId === connection.id ? 'Hide chat' : 'Message'}
+                      </Button>
+                      {openChatId === connection.id && (
+                        <div className="mt-3">
+                          <ChatPanel
+                            connectionId={connection.id}
+                            counterpartyLabel={connection.startup_name ?? 'Founder'}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

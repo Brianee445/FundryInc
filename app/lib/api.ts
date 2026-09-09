@@ -100,3 +100,22 @@ export async function apiPatch<T>(path: string, body?: unknown, options?: Omit<R
 export async function apiDelete<T = void>(path: string, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<T> {
   return request<T>(path, { ...options, method: 'DELETE' });
 }
+
+/** Multipart file upload — used for media.upload. Skips the JSON
+ * Content-Type header (fetch sets the multipart boundary itself) and
+ * doesn't run the body through JSON.stringify. */
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getStoredAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: formData });
+
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  const data = isJson ? await res.json() : undefined;
+
+  if (!res.ok) {
+    throw new ApiError(extractErrorMessage(data, res.statusText || 'Upload failed'), res.status);
+  }
+  return data as T;
+}

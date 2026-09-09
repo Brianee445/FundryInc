@@ -8,15 +8,21 @@ import { Input } from '@/app/components/ui/Input';
 import { Select } from '@/app/components/ui/Select';
 import { Textarea } from '@/app/components/ui/Textarea';
 import { Badge } from '@/app/components/ui/Badge';
+import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
+import { MediaUploadField } from '@/app/components/ui/MediaUploadField';
+import { GalleryUploadField } from '@/app/components/ui/GalleryUploadField';
+import { ChatPanel } from '@/app/components/dashboard/ChatPanel';
 import { apiGet, apiPatch, apiPut, ApiError } from '@/app/lib/api';
 import {
   founderProfileSchema,
+  galleryRawToArray,
   type FounderProfileFormData,
 } from '@/app/lib/validations/founderProfile';
 import {
   STAGE_LABELS,
   VERIFICATION_LABELS,
   type FounderProfile,
+  type FounderProfileInput,
 } from '@/app/lib/types/founderProfile';
 import type { ConnectionRequestRecord } from '@/app/lib/types/connection';
 
@@ -34,11 +40,14 @@ export function FounderDashboard() {
   const [isLoadingConnections, setIsLoadingConnections] = useState(true);
   const [decisionError, setDecisionError] = useState('');
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [openChatId, setOpenChatId] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FounderProfileFormData>({
     resolver: zodResolver(founderProfileSchema),
@@ -62,6 +71,9 @@ export function FounderDashboard() {
         location_city: data.location_city ?? '',
         pitch_deck_url: data.pitch_deck_url ?? '',
         demo_video_url: data.demo_video_url ?? '',
+        profile_picture_url: data.profile_picture_url ?? '',
+        gallery_image_urls_raw: (data.gallery_image_urls ?? []).join('\n'),
+        startup_link: data.startup_link ?? '',
         contact_visibility: data.contact_visibility,
       });
     } catch (err) {
@@ -94,7 +106,12 @@ export function FounderDashboard() {
   const onSubmit = async (data: FounderProfileFormData) => {
     setFormError('');
     try {
-      const saved = await apiPut<FounderProfile>('/api/v1/founder-profiles/me', data);
+      const { gallery_image_urls_raw, ...rest } = data;
+      const payload: FounderProfileInput = {
+        ...rest,
+        gallery_image_urls: galleryRawToArray(gallery_image_urls_raw),
+      };
+      const saved = await apiPut<FounderProfile>('/api/v1/founder-profiles/me', payload);
       setProfile(saved);
       setIsEditing(false);
     } catch (err) {
@@ -214,11 +231,37 @@ export function FounderDashboard() {
                 {errors.pitch_deck_url && <p className="mt-1 text-sm text-error">{errors.pitch_deck_url.message}</p>}
               </div>
 
+              <MediaUploadField
+                kind="demo_video"
+                label="Demo Video"
+                value={watch('demo_video_url') ?? ''}
+                onChange={(url) => setValue('demo_video_url', url, { shouldDirty: true })}
+              />
+
+              <MediaUploadField
+                kind="profile_picture"
+                label="Profile Picture"
+                value={watch('profile_picture_url') ?? ''}
+                onChange={(url) => setValue('profile_picture_url', url, { shouldDirty: true })}
+              />
+
               <div>
-                <label className="mb-1 block text-sm font-medium text-secondaryText">Demo Video URL</label>
-                <Input placeholder="https://..." {...register('demo_video_url')} />
-                {errors.demo_video_url && <p className="mt-1 text-sm text-error">{errors.demo_video_url.message}</p>}
+                <label className="mb-1 block text-sm font-medium text-secondaryText">Startup Link</label>
+                <Input placeholder="https://yourstartup.com" {...register('startup_link')} />
+                {errors.startup_link && <p className="mt-1 text-sm text-error">{errors.startup_link.message}</p>}
+                <p className="mt-1 text-xs text-secondaryText">Shown as a preview card on your profile.</p>
               </div>
+
+              <div className="sm:col-span-2">
+                <GalleryUploadField
+                  value={galleryRawToArray(watch('gallery_image_urls_raw'))}
+                  onChange={(urls) => setValue('gallery_image_urls_raw', urls.join('\n'), { shouldDirty: true })}
+                />
+                {errors.gallery_image_urls_raw && (
+                  <p className="mt-1 text-sm text-error">{errors.gallery_image_urls_raw.message}</p>
+                )}
+              </div>
+
 
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-secondaryText">Contact Visibility</label>
@@ -243,20 +286,30 @@ export function FounderDashboard() {
         ) : profile ? (
           <div>
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-2xl font-bold">{profile.startup_name}</h2>
-                  <Badge tone={profile.published ? 'success' : 'warning'}>
-                    {profile.published ? 'Published' : 'Draft'}
-                  </Badge>
-                  <Badge tone="info">{VERIFICATION_LABELS[profile.verification_tier]}</Badge>
+              <div className="flex items-start gap-4">
+                {profile.profile_picture_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={profile.profile_picture_url}
+                    alt={profile.startup_name}
+                    className="h-16 w-16 shrink-0 rounded-full border border-borderColor object-cover"
+                  />
+                )}
+                <div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-2xl font-bold">{profile.startup_name}</h2>
+                    <Badge tone={profile.published ? 'success' : 'warning'}>
+                      {profile.published ? 'Published' : 'Draft'}
+                    </Badge>
+                    <Badge tone="info">{VERIFICATION_LABELS[profile.verification_tier]}</Badge>
+                  </div>
+                  {profile.tagline && <p className="mt-2 text-secondaryText">{profile.tagline}</p>}
+                  <p className="mt-1 text-sm text-secondaryText">
+                    {STAGE_LABELS[profile.stage]}
+                    {profile.sector ? ` · ${profile.sector}` : ''}
+                    {profile.location_city ? ` · ${profile.location_city}` : ''}
+                  </p>
                 </div>
-                {profile.tagline && <p className="mt-2 text-secondaryText">{profile.tagline}</p>}
-                <p className="mt-1 text-sm text-secondaryText">
-                  {STAGE_LABELS[profile.stage]}
-                  {profile.sector ? ` · ${profile.sector}` : ''}
-                  {profile.location_city ? ` · ${profile.location_city}` : ''}
-                </p>
               </div>
               <div className="flex gap-3">
                 <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
@@ -269,6 +322,36 @@ export function FounderDashboard() {
             </div>
             {publishError && <p className="mt-3 text-sm text-error">{publishError}</p>}
             {profile.description && <p className="mt-4 whitespace-pre-line text-secondaryText">{profile.description}</p>}
+
+            {profile.startup_link && (
+              <div className="mt-4">
+                <LinkPreviewCard url={profile.startup_link} />
+              </div>
+            )}
+
+            {profile.demo_video_url && (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <video
+                src={profile.demo_video_url}
+                controls
+                className="mt-4 max-h-80 w-full rounded-input border border-borderColor"
+              />
+            )}
+
+            {profile.gallery_image_urls.length > 0 && (
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {profile.gallery_image_urls.map((src) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={src}
+                    src={src}
+                    alt={`${profile.startup_name} screenshot`}
+                    className="h-32 w-full rounded-input border border-borderColor object-cover"
+                  />
+                ))}
+              </div>
+            )}
+
             {!profile.published && (
               <p className="mt-4 text-sm text-secondaryText">
                 Your profile is a draft — investors can&apos;t discover it until you publish.
@@ -327,6 +410,25 @@ export function FounderDashboard() {
                     >
                       Decline
                     </Button>
+                  </div>
+                )}
+                {connection.status === 'accepted' && (
+                  <div className="mt-4">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setOpenChatId(openChatId === connection.id ? null : connection.id)}
+                    >
+                      {openChatId === connection.id ? 'Hide chat' : 'Message'}
+                    </Button>
+                    {openChatId === connection.id && (
+                      <div className="mt-3">
+                        <ChatPanel
+                          connectionId={connection.id}
+                          counterpartyLabel={connection.investor_email ?? 'Investor'}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </li>

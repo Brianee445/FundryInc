@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/app/components/ui/Button';
 import { Container } from '@/app/components/ui/Container';
+import { ThemeToggle } from '@/app/components/ui/ThemeToggle';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { FounderDashboard } from '@/app/components/dashboard/FounderDashboard';
 import { InvestorDashboard } from '@/app/components/dashboard/InvestorDashboard';
@@ -44,9 +45,12 @@ export default function DashboardPage() {
             </h1>
             <p className="text-sm text-secondaryText">{user.email}</p>
           </div>
-          <Button variant="secondary" size="sm" onClick={handleLogout}>
-            Log Out
-          </Button>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <Button variant="secondary" size="sm" onClick={handleLogout}>
+              Log Out
+            </Button>
+          </div>
         </div>
 
         {user.role === 'founder' && <FounderDashboard />}
