@@ -103,6 +103,14 @@ export function FounderDashboard() {
     loadConnections();
   }, [loadProfile, loadConnections]);
 
+  // Without this, a request accepted/declined elsewhere (or a new incoming
+  // request) never shows up while this dashboard stays open — same staleness
+  // issue as the investor's "sent" tab (see InvestorDashboard.tsx).
+  useEffect(() => {
+    const interval = setInterval(loadConnections, 8000);
+    return () => clearInterval(interval);
+  }, [loadConnections]);
+
   const onSubmit = async (data: FounderProfileFormData) => {
     setFormError('');
     try {
