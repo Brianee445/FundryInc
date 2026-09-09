@@ -5,10 +5,23 @@ import { apiGet, apiPost, ApiError } from '@/app/lib/api';
 import type { Message } from '@/app/lib/types/message';
 import { Button } from '@/app/components/ui/Button';
 import { Textarea } from '@/app/components/ui/Textarea';
+import { cn } from '@/app/lib/utils';
 
 const POLL_INTERVAL_MS = 4000;
 
-export function ChatPanel({ connectionId, counterpartyLabel }: { connectionId: string; counterpartyLabel: string }) {
+export function ChatPanel({
+  connectionId,
+  counterpartyLabel,
+  className,
+  bare = false,
+}: {
+  connectionId: string;
+  counterpartyLabel: string;
+  /** Extra classes for the outer container — use to override the default fixed height. */
+  className?: string;
+  /** Skip the outer card border/background — for embedding inside a page that already provides chrome. */
+  bare?: boolean;
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
@@ -57,10 +70,18 @@ export function ChatPanel({ connectionId, counterpartyLabel }: { connectionId: s
   };
 
   return (
-    <div className="flex h-96 flex-col rounded-card border border-borderColor bg-cardBg">
-      <div className="border-b border-borderColor px-4 py-3">
-        <p className="text-sm font-semibold text-primaryText">{counterpartyLabel}</p>
-      </div>
+    <div
+      className={cn(
+        'flex flex-col',
+        bare ? '' : 'rounded-card border border-borderColor bg-cardBg',
+        className ?? 'h-96'
+      )}
+    >
+      {!bare && (
+        <div className="border-b border-borderColor px-4 py-3">
+          <p className="text-sm font-semibold text-primaryText">{counterpartyLabel}</p>
+        </div>
+      )}
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
         {loading && <p className="text-sm text-secondaryText">Loading messages…</p>}

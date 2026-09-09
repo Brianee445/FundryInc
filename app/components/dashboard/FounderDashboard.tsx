@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/app/components/ui/Button';
@@ -11,7 +12,6 @@ import { Badge } from '@/app/components/ui/Badge';
 import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
 import { MediaUploadField } from '@/app/components/ui/MediaUploadField';
 import { GalleryUploadField } from '@/app/components/ui/GalleryUploadField';
-import { ChatPanel } from '@/app/components/dashboard/ChatPanel';
 import { apiGet, apiPatch, apiPut, ApiError } from '@/app/lib/api';
 import {
   founderProfileSchema,
@@ -40,7 +40,6 @@ export function FounderDashboard() {
   const [isLoadingConnections, setIsLoadingConnections] = useState(true);
   const [decisionError, setDecisionError] = useState('');
   const [decidingId, setDecidingId] = useState<string | null>(null);
-  const [openChatId, setOpenChatId] = useState<string | null>(null);
 
   const {
     register,
@@ -422,21 +421,11 @@ export function FounderDashboard() {
                 )}
                 {connection.status === 'accepted' && (
                   <div className="mt-4">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setOpenChatId(openChatId === connection.id ? null : connection.id)}
-                    >
-                      {openChatId === connection.id ? 'Hide chat' : 'Message'}
-                    </Button>
-                    {openChatId === connection.id && (
-                      <div className="mt-3">
-                        <ChatPanel
-                          connectionId={connection.id}
-                          counterpartyLabel={connection.investor_email ?? 'Investor'}
-                        />
-                      </div>
-                    )}
+                    <Link href={`/messages?connection=${connection.id}`}>
+                      <Button size="sm" variant="secondary">
+                        Message
+                      </Button>
+                    </Link>
                   </div>
                 )}
               </li>

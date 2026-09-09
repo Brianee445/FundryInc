@@ -1,13 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/app/components/ui/Button';
 import { Input } from '@/app/components/ui/Input';
 import { Select } from '@/app/components/ui/Select';
 import { Textarea } from '@/app/components/ui/Textarea';
 import { Badge } from '@/app/components/ui/Badge';
 import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
-import { ChatPanel } from '@/app/components/dashboard/ChatPanel';
 import { apiDelete, apiGet, apiPost, ApiError } from '@/app/lib/api';
 import {
   STAGE_LABELS,
@@ -49,7 +49,6 @@ export function InvestorDashboard() {
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [pendingProfileId, setPendingProfileId] = useState<string | null>(null);
-  const [openChatId, setOpenChatId] = useState<string | null>(null);
 
   const loadProfiles = useCallback(async () => {
     setIsLoadingProfiles(true);
@@ -349,21 +348,11 @@ export function InvestorDashboard() {
                   </p>
                   {connection.status === 'accepted' && (
                     <div className="mt-3">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setOpenChatId(openChatId === connection.id ? null : connection.id)}
-                      >
-                        {openChatId === connection.id ? 'Hide chat' : 'Message'}
-                      </Button>
-                      {openChatId === connection.id && (
-                        <div className="mt-3">
-                          <ChatPanel
-                            connectionId={connection.id}
-                            counterpartyLabel={connection.startup_name ?? 'Founder'}
-                          />
-                        </div>
-                      )}
+                      <Link href={`/messages?connection=${connection.id}`}>
+                        <Button size="sm" variant="secondary">
+                          Message
+                        </Button>
+                      </Link>
                     </div>
                   )}
                 </li>

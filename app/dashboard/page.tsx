@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/app/components/ui/Button';
 import { Container } from '@/app/components/ui/Container';
 import { ThemeToggle } from '@/app/components/ui/ThemeToggle';
@@ -46,6 +47,11 @@ export default function DashboardPage() {
             <p className="text-sm text-secondaryText">{user.email}</p>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/messages">
+              <Button variant="secondary" size="sm">
+                Messages
+              </Button>
+            </Link>
             <ThemeToggle />
             <Button variant="secondary" size="sm" onClick={handleLogout}>
               Log Out
