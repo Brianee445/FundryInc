@@ -12,7 +12,9 @@ import { Badge } from '@/app/components/ui/Badge';
 import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
 import { MediaUploadField } from '@/app/components/ui/MediaUploadField';
 import { GalleryUploadField } from '@/app/components/ui/GalleryUploadField';
+import { StatCard, ActivityChart } from '@/app/components/dashboard/ActivityChart';
 import { apiGet, apiPatch, apiPut, ApiError } from '@/app/lib/api';
+import type { FounderAnalytics } from '@/app/lib/types/analytics';
 import {
   founderProfileSchema,
   galleryRawToArray,
@@ -40,6 +42,8 @@ export function FounderDashboard() {
   const [isLoadingConnections, setIsLoadingConnections] = useState(true);
   const [decisionError, setDecisionError] = useState('');
   const [decidingId, setDecidingId] = useState<string | null>(null);
+
+  const [analytics, setAnalytics] = useState<FounderAnalytics | null>(null);
 
   const {
     register,
@@ -100,6 +104,9 @@ export function FounderDashboard() {
   useEffect(() => {
     loadProfile();
     loadConnections();
+    apiGet<FounderAnalytics>('/api/v1/analytics/founder').then(setAnalytics).catch(() => {
+      // Non-critical — the rest of the dashboard works without it.
+    });
   }, [loadProfile, loadConnections]);
 
   // Without this, a request accepted/declined elsewhere (or a new incoming
@@ -160,6 +167,22 @@ export function FounderDashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Activity */}
+      {analytics && (
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Profile views" value={analytics.profile_views_total} />
+            <StatCard label="Connection requests" value={analytics.connection_requests_total} />
+            <StatCard label="Saved by investors" value={analytics.saved_by_investors_count} />
+            <StatCard label="Messages sent" value={analytics.messages_total} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <ActivityChart title="Profile views (30 days)" data={analytics.profile_views_daily} />
+            <ActivityChart title="Connection requests (30 days)" data={analytics.connection_requests_daily} />
+          </div>
+        </section>
+      )}
+
       {/* Profile section */}
       <section className="rounded-card border border-borderColor bg-cardBg p-6 sm:p-8">
         {isLoadingProfile ? (

@@ -40,6 +40,7 @@ export interface FounderProfile {
   contact_visibility: ContactVisibility;
   verification_tier: VerificationTier;
   published: boolean;
+  is_spotlighted: boolean;
   created_at: string;
   contact: FounderContact | null;
   is_saved: boolean | null;

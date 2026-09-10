@@ -8,7 +8,9 @@ import { Select } from '@/app/components/ui/Select';
 import { Textarea } from '@/app/components/ui/Textarea';
 import { Badge } from '@/app/components/ui/Badge';
 import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
+import { StatCard, ActivityChart } from '@/app/components/dashboard/ActivityChart';
 import { apiDelete, apiGet, apiPost, ApiError } from '@/app/lib/api';
+import type { InvestorAnalytics } from '@/app/lib/types/analytics';
 import {
   STAGE_LABELS,
   VERIFICATION_LABELS,
@@ -49,6 +51,8 @@ export function InvestorDashboard() {
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [pendingProfileId, setPendingProfileId] = useState<string | null>(null);
+
+  const [analytics, setAnalytics] = useState<InvestorAnalytics | null>(null);
 
   const loadProfiles = useCallback(async () => {
     setIsLoadingProfiles(true);
@@ -92,6 +96,12 @@ export function InvestorDashboard() {
     loadSaved();
     loadSent();
   }, [loadSaved, loadSent]);
+
+  useEffect(() => {
+    apiGet<InvestorAnalytics>('/api/v1/analytics/investor').then(setAnalytics).catch(() => {
+      // Non-critical — the rest of the dashboard works without it.
+    });
+  }, []);
 
   // `sent` only reflects each connection's status as of the last fetch — if
   // the founder accepts/declines while the investor is already sitting on
@@ -243,6 +253,18 @@ export function InvestorDashboard() {
 
   return (
     <div className="space-y-6">
+      {analytics && (
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Requests sent" value={analytics.connection_requests_sent_total} />
+            <StatCard label="Accepted" value={analytics.connection_requests_accepted} />
+            <StatCard label="Saved founders" value={analytics.saved_founders_count} />
+            <StatCard label="Messages sent" value={analytics.messages_total} />
+          </div>
+          <ActivityChart title="Connection requests sent (30 days)" data={analytics.connection_requests_daily} />
+        </section>
+      )}
+
       <div className="flex gap-2 border-b border-borderColor">
         {(['discover', 'saved', 'sent'] as Tab[]).map((t) => (
           <button

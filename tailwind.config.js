@@ -35,9 +35,19 @@ module.exports = {
       },
       keyframes: {
         fadeIn: { '0%': { opacity: '0', transform: 'translateY(8px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        // Pans an oversized iframe up then back down within a clipped
+        // container — simulates "someone scrolling the site" for the
+        // startup link preview card without needing same-origin access to
+        // actually drive the embedded page's own scroll position.
+        previewScroll: {
+          '0%, 15%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-55%)' },
+          '85%, 100%': { transform: 'translateY(0)' },
+        },
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out both',
+        'preview-scroll': 'previewScroll 7s ease-in-out infinite',
       },
     },
   },
