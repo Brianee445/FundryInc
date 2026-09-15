@@ -28,6 +28,31 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+/** Real profile picture when we have one (currently only investors see one,
+ * since founders are the only role with a profile picture today) — falls
+ * back to an initials avatar otherwise, Messenger-style. */
+function Avatar({ label, avatarUrl, size = 44 }: { label: string; avatarUrl: string | null; size?: number }) {
+  if (avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt=""
+        style={{ width: size, height: size }}
+        className="shrink-0 rounded-full border border-borderColor object-cover"
+      />
+    );
+  }
+  return (
+    <div
+      style={{ width: size, height: size }}
+      className="flex shrink-0 items-center justify-center rounded-full bg-primaryBlue/10 text-sm font-semibold text-accentCyan"
+    >
+      {initials(label)}
+    </div>
+  );
+}
+
 export function MessagesInbox({ initialConnectionId }: { initialConnectionId?: string }) {
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,6 +81,13 @@ export function MessagesInbox({ initialConnectionId }: { initialConnectionId?: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Selecting a thread clears its unread count locally right away — no
+  // need to wait for the next poll tick, same as any DM app.
+  const selectThread = (connectionId: string) => {
+    setActiveId(connectionId);
+    setThreads((current) => current.map((t) => (t.connection_id === connectionId ? { ...t, unread_count: 0 } : t)));
+  };
+
   const activeThread = threads.find((t) => t.connection_id === activeId) ?? null;
 
   return (
@@ -68,7 +100,7 @@ export function MessagesInbox({ initialConnectionId }: { initialConnectionId?: s
         )}
       >
         <div className="border-b border-borderColor px-4 py-3">
-          <h2 className="text-sm font-semibold text-primaryText">Messages</h2>
+          <h2 className="text-base font-semibold text-primaryText">Chats</h2>
         </div>
         <div className="flex-1 overflow-y-auto">
           {isLoading && <p className="p-4 text-sm text-secondaryText">Loading conversations…</p>}
@@ -78,36 +110,43 @@ export function MessagesInbox({ initialConnectionId }: { initialConnectionId?: s
               No conversations yet — messaging unlocks once a connection request is accepted.
             </p>
           )}
-          {threads.map((thread) => (
-            <button
-              key={thread.connection_id}
-              onClick={() => setActiveId(thread.connection_id)}
-              className={cn(
-                'flex w-full items-center gap-3 border-b border-borderColor px-4 py-3 text-left transition',
-                thread.connection_id === activeId ? 'bg-secondaryBg' : 'hover:bg-secondaryBg/60'
-              )}
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primaryBlue/10 text-sm font-semibold text-accentCyan">
-                {initials(thread.counterparty_label)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-sm font-medium text-primaryText">{thread.counterparty_label}</p>
-                  {thread.last_message_at && (
-                    <span className="shrink-0 text-xs text-secondaryText">{relativeTime(thread.last_message_at)}</span>
-                  )}
+          {threads.map((thread) => {
+            const isUnread = thread.unread_count > 0 && thread.connection_id !== activeId;
+            return (
+              <button
+                key={thread.connection_id}
+                onClick={() => selectThread(thread.connection_id)}
+                className={cn(
+                  'flex w-full items-center gap-3 px-4 py-3 text-left transition',
+                  thread.connection_id === activeId ? 'bg-secondaryBg' : 'hover:bg-secondaryBg/60'
+                )}
+              >
+                <Avatar label={thread.counterparty_label} avatarUrl={thread.counterparty_avatar_url} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={cn('truncate text-sm', isUnread ? 'font-bold text-primaryText' : 'font-medium text-primaryText')}>
+                      {thread.counterparty_label}
+                    </p>
+                    {thread.last_message_at && (
+                      <span className={cn('shrink-0 text-xs', isUnread ? 'font-semibold text-primaryBlue' : 'text-secondaryText')}>
+                        {relativeTime(thread.last_message_at)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={cn('truncate text-xs', isUnread ? 'font-semibold text-primaryText' : 'text-secondaryText')}>
+                      {thread.last_message ?? 'Say hello 👋'}
+                    </p>
+                    {isUnread && (
+                      <Badge tone="info" className="shrink-0">
+                        {thread.unread_count}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs text-secondaryText">{thread.last_message ?? 'Say hello 👋'}</p>
-                  {thread.unread_count > 0 && (
-                    <Badge tone="info" className="shrink-0">
-                      {thread.unread_count}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -123,9 +162,7 @@ export function MessagesInbox({ initialConnectionId }: { initialConnectionId?: s
               >
                 ←
               </button>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primaryBlue/10 text-xs font-semibold text-accentCyan">
-                {initials(activeThread.counterparty_label)}
-              </div>
+              <Avatar label={activeThread.counterparty_label} avatarUrl={activeThread.counterparty_avatar_url} size={36} />
               <p className="text-sm font-semibold text-primaryText">{activeThread.counterparty_label}</p>
             </div>
             <ChatPanel

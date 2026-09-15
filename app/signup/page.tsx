@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { Button } from '@/app/components/ui/Button';
 import { Input } from '@/app/components/ui/Input';
+import { PasswordInput } from '@/app/components/ui/PasswordInput';
 import { Select } from '@/app/components/ui/Select';
 import { Container } from '@/app/components/ui/Container';
 import { GoogleSignInButton } from '@/app/components/ui/GoogleSignInButton';
@@ -95,8 +96,20 @@ export default function SignupPage() {
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-secondaryText">
               Password
             </label>
-            <Input id="password" type="password" placeholder="At least 8 characters" {...register('password')} />
+            <PasswordInput id="password" placeholder="At least 8 characters" {...register('password')} />
             {errors.password && <p className="mt-1 text-sm text-error">{errors.password.message}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-secondaryText">
+              Confirm Password
+            </label>
+            <PasswordInput
+              id="confirmPassword"
+              placeholder="Re-enter your password"
+              {...register('confirmPassword')}
+            />
+            {errors.confirmPassword && <p className="mt-1 text-sm text-error">{errors.confirmPassword.message}</p>}
           </div>
 
           <Button type="submit" variant="primary" size="lg" className="w-full" disabled={isSubmitting}>

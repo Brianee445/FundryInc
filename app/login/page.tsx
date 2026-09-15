@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { Button } from '@/app/components/ui/Button';
 import { Input } from '@/app/components/ui/Input';
+import { PasswordInput } from '@/app/components/ui/PasswordInput';
 import { Container } from '@/app/components/ui/Container';
 import { GoogleSignInButton } from '@/app/components/ui/GoogleSignInButton';
 import { Logo } from '@/app/components/layout/Logo';
@@ -14,16 +15,23 @@ import { useAuth } from '@/app/providers/AuthProvider';
 import { loginSchema, type LoginFormData } from '@/app/lib/validations/auth';
 import { ApiError } from '@/app/lib/api';
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, loginWithGoogle } = useAuth();
   const [error, setError] = useState('');
+
+  // Set by AuthProvider's session-superseded handler redirecting here — see
+  // app/lib/api.ts SESSION_SUPERSEDED_EVENT. Read once on mount rather than
+  // kept live in context, since by the time we're on the login page the
+  // reason has already served its purpose.
+  const loggedOutElsewhere = searchParams.get('reason') === 'other-device';
 
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) });
+  } = useForm<LoginFormData>({ resolver: zodResolver(loginSchema), defaultValues: { rememberMe: true } });
 
   const onSubmit = async (data: LoginFormData) => {
     setError('');
@@ -61,6 +69,13 @@ export default function LoginPage() {
           <p className="mt-2 text-secondaryText">Log in to your Fundry account.</p>
         </div>
 
+        {loggedOutElsewhere && (
+          <div className="mb-6 rounded-[14px] border border-warning bg-warning/10 p-4 text-sm text-warning">
+            You were logged out because your account was signed in on another device. For your security, only one
+            device can be signed in at a time.
+          </div>
+        )}
+
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="space-y-6 rounded-card border border-borderColor bg-cardBg p-8"
@@ -81,9 +96,18 @@ export default function LoginPage() {
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-secondaryText">
               Password
             </label>
-            <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
+            <PasswordInput id="password" placeholder="••••••••" {...register('password')} />
             {errors.password && <p className="mt-1 text-sm text-error">{errors.password.message}</p>}
           </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-secondaryText">
+            <input
+              type="checkbox"
+              {...register('rememberMe')}
+              className="h-4 w-4 rounded border-borderColor accent-primaryBlue"
+            />
+            Remember me for 7 days
+          </label>
 
           <Button type="submit" variant="primary" size="lg" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? 'Logging in...' : 'Log In'}
@@ -114,5 +138,13 @@ export default function LoginPage() {
         </p>
       </Container>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

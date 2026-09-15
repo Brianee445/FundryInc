@@ -12,13 +12,13 @@ import { InvestorDashboard } from '@/app/components/dashboard/InvestorDashboard'
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, logout, loggedOutReason } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace('/login');
+      router.replace(loggedOutReason ? '/login?reason=other-device' : '/login');
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, loggedOutReason, router]);
 
   const handleLogout = () => {
     logout();

@@ -12,13 +12,13 @@ import { MessagesInbox } from '@/app/components/messages/MessagesInbox';
 function MessagesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, logout, loggedOutReason } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace('/login');
+      router.replace(loggedOutReason ? '/login?reason=other-device' : '/login');
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, loggedOutReason, router]);
 
   const handleLogout = () => {
     logout();

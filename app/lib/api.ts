@@ -29,19 +29,42 @@ function extractErrorMessage(data: unknown, fallback: string): string {
 }
 
 const AUTH_TOKEN_STORAGE_KEY = 'fundry_auth_token';
+// A dedicated flag for *where* the token lives, so a page reload knows
+// which storage to check without guessing (checking both every time would
+// silently "restore" a session-only login after the browser was reopened —
+// exactly what remember-me=off is supposed to prevent).
+const AUTH_TOKEN_PERSIST_KEY = 'fundry_auth_persist';
+// Dispatched when the server tells us this session was invalidated because
+// the account logged in somewhere else — AuthProvider listens for this to
+// force a logout + show a message, since call sites all over the app hit
+// this same 401 and most of them just swallow errors silently.
+export const SESSION_SUPERSEDED_EVENT = 'fundry:session-superseded';
 
 /** Reads the stored JWT, if any. No-ops on the server (SSR has no localStorage). */
 export function getStoredAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  const persisted = window.localStorage.getItem(AUTH_TOKEN_PERSIST_KEY) === 'true';
+  return persisted ? window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
-export function setStoredAuthToken(token: string): void {
-  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+/** `persist=true` (remember me checked) survives closing the browser;
+ * `persist=false` only lasts for the current tab/session, same convention
+ * as most "remember me" checkboxes. */
+export function setStoredAuthToken(token: string, persist: boolean = true): void {
+  window.localStorage.setItem(AUTH_TOKEN_PERSIST_KEY, String(persist));
+  if (persist) {
+    window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  } else {
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  }
 }
 
 export function clearStoredAuthToken(): void {
   window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(AUTH_TOKEN_PERSIST_KEY);
+  window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
 interface RequestOptions {
@@ -71,6 +94,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const data = isJson ? await res.json() : undefined;
 
   if (!res.ok) {
+    if (res.status === 401 && res.headers.get('x-session-superseded') === 'true') {
+      clearStoredAuthToken();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(SESSION_SUPERSEDED_EVENT));
+      }
+    }
     throw new ApiError(extractErrorMessage(data, res.statusText || 'Request failed'), res.status);
   }
   return data as T;
@@ -115,6 +144,12 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
   const data = isJson ? await res.json() : undefined;
 
   if (!res.ok) {
+    if (res.status === 401 && res.headers.get('x-session-superseded') === 'true') {
+      clearStoredAuthToken();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(SESSION_SUPERSEDED_EVENT));
+      }
+    }
     throw new ApiError(extractErrorMessage(data, res.statusText || 'Upload failed'), res.status);
   }
   return data as T;

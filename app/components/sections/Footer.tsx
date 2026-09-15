@@ -18,7 +18,9 @@ export function Footer() {
             <Logo />
             <p className="mt-3 text-sm text-secondaryText">Connecting Visionary Founders with Serious Investors.</p>
             <div className="mt-4 flex gap-4">
-              <Twitter size={20} className="cursor-pointer text-secondaryText hover:text-primaryText" />
+              <a href="https://x.com/thefundryplc" target="_blank" rel="noopener noreferrer" aria-label="Fundry on X">
+                <Twitter size={20} className="cursor-pointer text-secondaryText hover:text-primaryText" />
+              </a>
               <Linkedin size={20} className="cursor-pointer text-secondaryText hover:text-primaryText" />
               <Youtube size={20} className="cursor-pointer text-secondaryText hover:text-primaryText" />
             </div>

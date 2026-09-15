@@ -11,6 +11,7 @@ export interface Message {
 export interface MessageThread {
   connection_id: string;
   counterparty_label: string;
+  counterparty_avatar_url: string | null;
   last_message: string | null;
   last_message_at: string | null;
   unread_count: number;

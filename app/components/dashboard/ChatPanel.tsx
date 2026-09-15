@@ -1,13 +1,61 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Send } from 'lucide-react';
 import { apiGet, apiPost, ApiError } from '@/app/lib/api';
 import type { Message } from '@/app/lib/types/message';
-import { Button } from '@/app/components/ui/Button';
-import { Textarea } from '@/app/components/ui/Textarea';
 import { cn } from '@/app/lib/utils';
 
 const POLL_INTERVAL_MS = 4000;
+// Messages within this gap of each other from the same sender are visually
+// grouped (no repeated timestamp, tighter spacing) — the standard
+// Messenger/WhatsApp convention rather than a timestamp on every bubble.
+const GROUP_GAP_MS = 5 * 60_000;
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatDayDivider(iso: string): string {
+  const date = new Date(iso);
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+  if (isToday) return 'Today';
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+}
+
+interface RenderItem {
+  message: Message;
+  showDayDivider: boolean;
+  isGroupStart: boolean;
+  isGroupEnd: boolean;
+}
+
+function buildRenderItems(messages: Message[]): RenderItem[] {
+  return messages.map((message, index) => {
+    const prev = messages[index - 1];
+    const next = messages[index + 1];
+
+    const showDayDivider =
+      !prev || new Date(prev.created_at).toDateString() !== new Date(message.created_at).toDateString();
+
+    const isGroupStart =
+      !prev ||
+      prev.is_mine !== message.is_mine ||
+      new Date(message.created_at).getTime() - new Date(prev.created_at).getTime() > GROUP_GAP_MS ||
+      showDayDivider;
+
+    const isGroupEnd =
+      !next ||
+      next.is_mine !== message.is_mine ||
+      new Date(next.created_at).getTime() - new Date(message.created_at).getTime() > GROUP_GAP_MS;
+
+    return { message, showDayDivider, isGroupStart, isGroupEnd };
+  });
+}
 
 export function ChatPanel({
   connectionId,
@@ -69,6 +117,16 @@ export function ChatPanel({
     }
   };
 
+  const renderItems = useMemo(() => buildRenderItems(messages), [messages]);
+
+  // "Seen" shows once, under the most recent message I sent that the other
+  // person has actually read — same convention as Messenger, not repeated
+  // on every bubble.
+  const lastSeenMineId = useMemo(() => {
+    const mineRead = messages.filter((m) => m.is_mine && m.read_at);
+    return mineRead.length > 0 ? mineRead[mineRead.length - 1].id : null;
+  }, [messages]);
+
   return (
     <div
       className={cn(
@@ -83,22 +141,47 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
+      <div className="flex-1 space-y-0.5 overflow-y-auto px-4 py-3">
         {loading && <p className="text-sm text-secondaryText">Loading messages…</p>}
         {!loading && messages.length === 0 && (
           <p className="text-sm text-secondaryText">No messages yet — say hello.</p>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={m.is_mine ? 'flex justify-end' : 'flex justify-start'}>
+        {renderItems.map(({ message: m, showDayDivider, isGroupStart, isGroupEnd }) => (
+          <div key={m.id}>
+            {showDayDivider && (
+              <div className="my-3 text-center text-xs font-medium text-secondaryText">
+                {formatDayDivider(m.created_at)}
+              </div>
+            )}
             <div
-              className={
-                m.is_mine
-                  ? 'max-w-[75%] rounded-input bg-primaryBlue px-4 py-2 text-sm text-white'
-                  : 'max-w-[75%] rounded-input bg-secondaryBg px-4 py-2 text-sm text-primaryText'
-              }
+              className={cn('flex', m.is_mine ? 'justify-end' : 'justify-start', isGroupStart ? 'mt-2' : 'mt-0.5')}
             >
-              {m.body}
+              <div
+                title={formatTime(m.created_at)}
+                className={cn(
+                  'max-w-[75%] whitespace-pre-wrap break-words px-4 py-2 text-sm',
+                  m.is_mine ? 'bg-primaryBlue text-white' : 'bg-secondaryBg text-primaryText',
+                  // Messenger-style grouping: rounded on the outer corners of
+                  // a run of consecutive bubbles, flatter where they touch.
+                  m.is_mine
+                    ? cn(
+                        'rounded-l-2xl',
+                        isGroupStart ? 'rounded-tr-2xl' : 'rounded-tr-md',
+                        isGroupEnd ? 'rounded-br-2xl' : 'rounded-br-md'
+                      )
+                    : cn(
+                        'rounded-r-2xl',
+                        isGroupStart ? 'rounded-tl-2xl' : 'rounded-tl-md',
+                        isGroupEnd ? 'rounded-bl-2xl' : 'rounded-bl-md'
+                      )
+                )}
+              >
+                {m.body}
+              </div>
             </div>
+            {m.id === lastSeenMineId && (
+              <p className="mt-1 text-right text-[11px] text-secondaryText">Seen {formatTime(m.read_at!)}</p>
+            )}
           </div>
         ))}
         <div ref={bottomRef} />
@@ -106,23 +189,27 @@ export function ChatPanel({
 
       {error && <p className="px-4 text-xs text-error">{error}</p>}
 
-      <div className="flex items-end gap-2 border-t border-borderColor p-3">
-        <Textarea
+      <div className="flex items-center gap-2 border-t border-borderColor p-3">
+        <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter') {
               e.preventDefault();
               handleSend();
             }
           }}
           placeholder="Write a message…"
-          rows={1}
-          className="min-h-[44px] resize-none py-3"
+          className="min-h-[44px] flex-1 rounded-full border border-borderColor bg-secondaryBg px-5 text-sm text-primaryText placeholder-secondaryText outline-none transition focus:border-primaryBlue focus:ring-1 focus:ring-primaryBlue"
         />
-        <Button onClick={handleSend} disabled={sending || !draft.trim()}>
-          Send
-        </Button>
+        <button
+          onClick={handleSend}
+          disabled={sending || !draft.trim()}
+          aria-label="Send message"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primaryBlue text-white transition hover:bg-hoverBlue disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Send size={18} />
+        </button>
       </div>
     </div>
   );
