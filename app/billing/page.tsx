@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/app/components/ui/Button';
@@ -21,7 +21,7 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-export default function BillingPage() {
+function BillingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -239,5 +239,19 @@ export default function BillingPage() {
         {error && <p className="mt-4 text-sm text-error">{error}</p>}
       </Container>
     </main>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-background">
+          <p className="text-secondaryText">Loading...</p>
+        </main>
+      }
+    >
+      <BillingPageContent />
+    </Suspense>
   );
 }
