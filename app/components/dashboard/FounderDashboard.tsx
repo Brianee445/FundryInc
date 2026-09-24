@@ -9,6 +9,7 @@ import { Input } from '@/app/components/ui/Input';
 import { Select } from '@/app/components/ui/Select';
 import { Textarea } from '@/app/components/ui/Textarea';
 import { Badge } from '@/app/components/ui/Badge';
+import { VerificationBadge } from '@/app/components/ui/VerificationBadge';
 import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
 import { MediaUploadField } from '@/app/components/ui/MediaUploadField';
 import { GalleryUploadField } from '@/app/components/ui/GalleryUploadField';
@@ -437,7 +438,10 @@ export function FounderDashboard() {
                       <Badge tone={profile.published ? 'success' : 'warning'}>
                         {profile.published ? 'Published' : 'Draft'}
                       </Badge>
-                      <Badge tone="info">{VERIFICATION_LABELS[profile.verification_tier]}</Badge>
+                      <VerificationBadge tier={profile.verification_tier} />
+                      <Link href="/billing" className="text-xs font-medium text-primaryBlue hover:underline">
+                        {profile.verification_tier === 'basic' ? 'Upgrade' : 'Manage plan'}
+                      </Link>
                     </div>
                     {profile.tagline && <p className="mt-2 text-secondaryText">{profile.tagline}</p>}
                     <p className="mt-1 text-sm text-secondaryText">

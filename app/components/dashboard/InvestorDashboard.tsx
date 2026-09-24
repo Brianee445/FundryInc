@@ -9,6 +9,7 @@ import { Input } from '@/app/components/ui/Input';
 import { Select } from '@/app/components/ui/Select';
 import { Textarea } from '@/app/components/ui/Textarea';
 import { Badge } from '@/app/components/ui/Badge';
+import { VerificationBadge } from '@/app/components/ui/VerificationBadge';
 import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
 import { MediaUploadField } from '@/app/components/ui/MediaUploadField';
 import { StatCard, ActivityChart } from '@/app/components/dashboard/ActivityChart';
@@ -304,7 +305,7 @@ export function InvestorDashboard() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold">{profile.startup_name}</h3>
-              <Badge tone="info">{VERIFICATION_LABELS[profile.verification_tier]}</Badge>
+              <VerificationBadge tier={profile.verification_tier} />
             </div>
             {profile.tagline && <p className="mt-1 text-sm text-secondaryText">{profile.tagline}</p>}
             <p className="mt-1 text-xs text-secondaryText">
