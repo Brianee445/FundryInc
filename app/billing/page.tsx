@@ -231,7 +231,7 @@ export default function BillingPage() {
             </Button>
 
             <p className="mt-3 text-center text-xs text-secondaryText">
-              You'll be redirected to Bachs' secure checkout. Cancel anytime.
+              You&apos;ll be redirected to Bachs&apos; secure checkout. Cancel anytime.
             </p>
           </section>
         )}
