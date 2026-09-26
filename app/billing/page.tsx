@@ -54,7 +54,6 @@ function BillingPageContent() {
   const [currentTier, setCurrentTier] = useState<VerificationTier>('starter');
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedTier, setSelectedTier] = useState<PaidTier>('basic');
   const [selectedInterval, setSelectedInterval] = useState<BillingInterval>('monthly');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
@@ -63,20 +62,33 @@ function BillingPageContent() {
   const role = user?.role === 'investor' ? 'investor' : 'founder';
   const profileEndpoint = role === 'investor' ? '/api/v1/investor-profiles/me' : '/api/v1/founder-profiles/me';
 
+  const [hasLoaded, setHasLoaded] = useState(false);
+
   const loadAll = useCallback(async () => {
     setIsLoading(true);
+    setError('');
+    // Fetch independently rather than Promise.all — a failure on the
+    // subscription call (e.g. no row yet) must never blank out a
+    // successfully-fetched profile tier, which is what was making this
+    // page show the stale "Starter" default while the dashboard
+    // correctly showed the real tier.
     try {
-      const [profileData, subData] = await Promise.all([
-        apiGet<{ verification_tier: VerificationTier }>(profileEndpoint),
-        apiGet<SubscriptionStatus>('/api/v1/billing/subscription'),
-      ]);
+      const profileData = await apiGet<{ verification_tier: VerificationTier }>(profileEndpoint);
       setCurrentTier(profileData.verification_tier);
-      setSubscription(subData);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load your billing details.');
-    } finally {
-      setIsLoading(false);
+      setError(err instanceof ApiError ? err.message : 'Could not load your profile.');
     }
+
+    try {
+      const subData = await apiGet<SubscriptionStatus>('/api/v1/billing/subscription');
+      setSubscription(subData);
+    } catch {
+      // No subscription yet (starter tier) is an expected, silent case.
+      setSubscription(null);
+    }
+
+    setHasLoaded(true);
+    setIsLoading(false);
   }, [profileEndpoint]);
 
   useEffect(() => {
@@ -136,7 +148,7 @@ function BillingPageContent() {
     }
   }
 
-  if (authLoading || isLoading) {
+  if (authLoading || isLoading || !hasLoaded) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-secondaryText">Loading...</p>
@@ -237,7 +249,21 @@ function BillingPageContent() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {TIERS.map((option) => {
               const isCurrent = currentTier === option.tier;
+              const isExactMatch = isCurrent && subscription?.interval === selectedInterval;
               const price = selectedInterval === 'annual' ? option.monthly * 10 : option.monthly;
+
+              let buttonLabel: string;
+              if (actionLoading) {
+                buttonLabel = 'Redirecting…';
+              } else if (isExactMatch) {
+                buttonLabel = 'Current plan';
+              } else if (isCurrent) {
+                buttonLabel = `Switch to ${selectedInterval === 'annual' ? 'Annual' : 'Monthly'}`;
+              } else if (currentTier === 'starter') {
+                buttonLabel = `Upgrade — ${naira(price)}${selectedInterval === 'annual' ? '/yr' : '/mo'}`;
+              } else {
+                buttonLabel = `Switch to ${option.label} — ${naira(price)}${selectedInterval === 'annual' ? '/yr' : '/mo'}`;
+              }
 
               return (
                 <div
@@ -274,15 +300,11 @@ function BillingPageContent() {
                   <Button
                     variant="ghost"
                     onClick={() => handleUpgrade(option.tier, selectedInterval)}
-                    disabled={actionLoading || isCurrent}
+                    disabled={actionLoading || isExactMatch}
                     className="mt-5 w-full text-white hover:opacity-90 disabled:opacity-60"
                     style={{ backgroundColor: option.color }}
                   >
-                    {isCurrent
-                      ? 'Current plan'
-                      : actionLoading
-                        ? 'Redirecting…'
-                        : `Upgrade — ${naira(price)}${selectedInterval === 'annual' ? '/yr' : '/mo'}`}
+                    {buttonLabel}
                   </Button>
                 </div>
               );

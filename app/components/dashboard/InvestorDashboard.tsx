@@ -687,7 +687,14 @@ export function InvestorDashboard() {
                 </p>
               )}
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-input border border-dashed border-borderColor p-8 text-center">
+              <p className="text-secondaryText">You haven&apos;t created your investor profile yet.</p>
+              <Button size="sm" className="mt-4" onClick={() => setIsEditingProfile(true)}>
+                Create your profile
+              </Button>
+            </div>
+          )}
         </section>
       )}
 
