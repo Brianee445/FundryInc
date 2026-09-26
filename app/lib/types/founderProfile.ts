@@ -1,5 +1,5 @@
 export type Stage = 'idea' | 'preseed' | 'seed' | 'series_a' | 'series_b_plus';
-export type VerificationTier = 'basic' | 'business_verified' | 'investor_ready';
+export type VerificationTier = 'starter' | 'basic' | 'premium';
 export type ContactVisibility = 'private' | 'public';
 
 export const STAGE_LABELS: Record<Stage, string> = {
@@ -11,9 +11,9 @@ export const STAGE_LABELS: Record<Stage, string> = {
 };
 
 export const VERIFICATION_LABELS: Record<VerificationTier, string> = {
+  starter: 'Starter',
   basic: 'Basic',
-  business_verified: 'Business Verified',
-  investor_ready: 'Investor-Ready',
+  premium: 'Premium',
 };
 
 export interface FounderContact {

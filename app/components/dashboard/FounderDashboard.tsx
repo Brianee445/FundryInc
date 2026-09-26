@@ -439,8 +439,11 @@ export function FounderDashboard() {
                         {profile.published ? 'Published' : 'Draft'}
                       </Badge>
                       <VerificationBadge tier={profile.verification_tier} />
-                      <Link href="/billing" className="text-xs font-medium text-primaryBlue hover:underline">
-                        {profile.verification_tier === 'basic' ? 'Upgrade' : 'Manage plan'}
+                      <Link
+                        href="/billing"
+                        className="rounded-button bg-primaryBlue px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-hoverBlue"
+                      >
+                        {profile.verification_tier === 'starter' ? 'Upgrade' : 'Manage plan'}
                       </Link>
                     </div>
                     {profile.tagline && <p className="mt-2 text-secondaryText">{profile.tagline}</p>}

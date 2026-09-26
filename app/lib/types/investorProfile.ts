@@ -1,3 +1,5 @@
+import type { VerificationTier } from '@/app/lib/types/founderProfile';
+
 export type InvestorType = 'angel' | 'vc' | 'fund' | 'family_office' | 'other';
 export type ContactVisibility = 'private' | 'public';
 
@@ -26,6 +28,7 @@ export interface InvestorProfile {
   profile_picture_url: string | null;
   linkedin_url: string | null;
   contact_visibility: ContactVisibility;
+  verification_tier: VerificationTier;
   published: boolean;
   created_at: string;
   contact: InvestorContact | null;

@@ -1,4 +1,5 @@
-export type BillingPlan = 'monthly' | 'annual';
+export type BillingInterval = 'monthly' | 'annual';
+export type PaidTier = 'basic' | 'premium';
 
 export interface CheckoutResponse {
   checkout_url: string;
@@ -6,7 +7,8 @@ export interface CheckoutResponse {
 
 export interface SubscriptionStatus {
   verification_tier: string;
-  plan: BillingPlan | null;
+  tier: PaidTier | null;
+  interval: BillingInterval | null;
   status: 'active' | 'past_due' | 'canceled' | null;
   current_period_end: string | null;
 }

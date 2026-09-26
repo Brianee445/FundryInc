@@ -654,6 +654,13 @@ export function InvestorDashboard() {
                       <Badge tone={investorProfile.published ? 'success' : 'warning'}>
                         {investorProfile.published ? 'Published' : 'Draft'}
                       </Badge>
+                      <VerificationBadge tier={investorProfile.verification_tier} />
+                      <Link
+                        href="/billing"
+                        className="rounded-button bg-primaryBlue px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-hoverBlue"
+                      >
+                        {investorProfile.verification_tier === 'starter' ? 'Upgrade' : 'Manage plan'}
+                      </Link>
                     </div>
                     {investorProfile.bio && <p className="mt-2 text-secondaryText">{investorProfile.bio}</p>}
                     <p className="mt-1 text-sm text-secondaryText">
