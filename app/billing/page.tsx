@@ -17,23 +17,35 @@ interface TierOption {
   color: string; // tailwind arbitrary hex, matches VerificationBadge's palette
   perks: string[];
   monthly: number;
+  /** Full-price annual total (12x monthly here — neither tier gets an automatic multi-month-free discount). */
+  annual: number;
+  /** Premium only: a discounted annual price shown alongside the full annual price, with the savings called out. */
+  annualPromo?: number;
 }
 
-// Annual = 10x monthly (2 months free) for every paid tier, both roles.
 const TIERS: TierOption[] = [
   {
     tier: 'basic',
     label: 'Basic',
     color: '#F97316',
-    perks: ['Extra profile media', 'Basic analytics'],
-    monthly: 3000,
+    perks: ['Up to 3 startup profiles', '5 intro messages to investors / 30 days', 'Extra profile media', 'Basic analytics'],
+    monthly: 2000,
+    annual: 24000,
   },
   {
     tier: 'premium',
     label: 'Premium',
     color: '#D4AF37',
-    perks: ['Everything in Basic', 'Priority placement', 'Full analytics suite'],
+    perks: [
+      'Unlimited startup profiles (each stays live 90 days per publish)',
+      'Unlimited intro messages to investors',
+      'Blue-tick verification badge',
+      'Suggested to investors',
+      'Full analytics suite',
+    ],
     monthly: 5000,
+    annual: 60000,
+    annualPromo: 50000,
   },
 ];
 
@@ -241,7 +253,7 @@ function BillingPageContent() {
                     : 'border-borderColor text-secondaryText hover:border-primaryBlue/40'
                 }`}
               >
-                {interval === 'monthly' ? 'Monthly' : 'Annual (2 months free)'}
+                {interval === 'monthly' ? 'Monthly' : 'Annual'}
               </button>
             ))}
           </div>
@@ -250,7 +262,11 @@ function BillingPageContent() {
             {TIERS.map((option) => {
               const isCurrent = currentTier === option.tier;
               const isExactMatch = isCurrent && subscription?.interval === selectedInterval;
-              const price = selectedInterval === 'annual' ? option.monthly * 10 : option.monthly;
+              const fullAnnual = option.annual;
+              const price =
+                selectedInterval === 'annual' ? option.annualPromo ?? fullAnnual : option.monthly;
+              const hasPromo = selectedInterval === 'annual' && option.annualPromo !== undefined;
+              const savings = hasPromo ? fullAnnual - (option.annualPromo as number) : 0;
 
               let buttonLabel: string;
               if (actionLoading) {
@@ -279,12 +295,22 @@ function BillingPageContent() {
                     {isCurrent && <VerificationBadge tier={option.tier} className="ml-auto" />}
                   </div>
 
-                  <p className="mt-3 text-2xl font-bold text-primaryText">
-                    {naira(price)}
-                    <span className="text-sm font-normal text-secondaryText">
-                      {selectedInterval === 'annual' ? '/yr' : '/mo'}
+                  <p className="mt-3 flex items-baseline gap-2">
+                    {hasPromo && (
+                      <span className="text-base font-medium text-secondaryText line-through">{naira(fullAnnual)}</span>
+                    )}
+                    <span className="text-2xl font-bold text-primaryText">
+                      {naira(price)}
+                      <span className="text-sm font-normal text-secondaryText">
+                        {selectedInterval === 'annual' ? '/yr' : '/mo'}
+                      </span>
                     </span>
                   </p>
+                  {hasPromo && (
+                    <p className="mt-1 text-xs font-medium" style={{ color: option.color }}>
+                      Save {naira(savings)} with the annual plan
+                    </p>
+                  )}
 
                   <ul className="mt-4 space-y-1.5 text-sm text-secondaryText">
                     {option.perks.map((perk) => (

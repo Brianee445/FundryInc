@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,7 +14,7 @@ import { LinkPreviewCard } from '@/app/components/ui/LinkPreviewCard';
 import { MediaUploadField } from '@/app/components/ui/MediaUploadField';
 import { GalleryUploadField } from '@/app/components/ui/GalleryUploadField';
 import { StatCard, ActivityChart } from '@/app/components/dashboard/ActivityChart';
-import { apiGet, apiPatch, apiPost, apiPut, ApiError } from '@/app/lib/api';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, ApiError } from '@/app/lib/api';
 import type { FounderAnalytics } from '@/app/lib/types/analytics';
 import {
   founderProfileSchema,
@@ -26,6 +26,7 @@ import {
   VERIFICATION_LABELS,
   type FounderProfile,
   type FounderProfileInput,
+  type VerificationTier,
 } from '@/app/lib/types/founderProfile';
 import {
   INVESTOR_TYPE_LABELS,
@@ -36,6 +37,15 @@ import type { ConnectionRequestRecord } from '@/app/lib/types/connection';
 
 const STAGE_OPTIONS = Object.entries(STAGE_LABELS) as [FounderProfile['stage'], string][];
 const INVESTOR_TYPE_OPTIONS = Object.entries(INVESTOR_TYPE_LABELS) as [InvestorProfile['investor_type'], string][];
+
+// Mirrors PROFILE_LIMITS in the backend's routers/founder_profiles.py —
+// kept here only to show the right copy/disable the right button before
+// the request round-trips; the backend is still the real enforcement.
+const PROFILE_LIMITS: Record<VerificationTier, number | null> = {
+  starter: 1,
+  basic: 3,
+  premium: null,
+};
 
 type Tab = 'profile' | 'discover-investors' | 'pitches-sent' | 'requests';
 
@@ -49,15 +59,43 @@ function buildInvestorQuery(filters: InvestorDirectoryFilters): string {
   return query ? `?${query}` : '';
 }
 
+function emptyFormValues(): FounderProfileFormData {
+  return {
+    startup_name: '',
+    tagline: '',
+    description: '',
+    sector: '',
+    stage: 'idea',
+    funding_ask_min: undefined,
+    funding_ask_max: undefined,
+    location_country: '',
+    location_city: '',
+    pitch_deck_url: '',
+    demo_video_url: '',
+    profile_picture_url: '',
+    gallery_image_urls_raw: '',
+    startup_link: '',
+    contact_visibility: 'private',
+  };
+}
+
 export function FounderDashboard() {
   const [tab, setTab] = useState<Tab>('profile');
 
-  const [profile, setProfile] = useState<FounderProfile | null>(null);
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  // Multi-profile: a founder owns a LIST of startup profiles (capped by
+  // their plan — see PROFILE_LIMITS), and manages one at a time via the
+  // switcher below. activeProfileId drives which one the "My Profile"
+  // tab's form/card operates on.
+  const [profiles, setProfiles] = useState<FounderProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [formError, setFormError] = useState('');
   const [publishError, setPublishError] = useState('');
   const [isTogglingPublish, setIsTogglingPublish] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [connections, setConnections] = useState<ConnectionRequestRecord[]>([]);
   const [isLoadingConnections, setIsLoadingConnections] = useState(true);
@@ -74,6 +112,10 @@ export function FounderDashboard() {
   const [pitchMessage, setPitchMessage] = useState('');
   const [pendingInvestorId, setPendingInvestorId] = useState<string | null>(null);
   const [pitchError, setPitchError] = useState('');
+  // Which of my startups is doing the pitching — defaults to whichever is
+  // active in the switcher, but the founder can change it per-pitch if
+  // they own more than one.
+  const [pitchFromProfileId, setPitchFromProfileId] = useState<string | null>(null);
 
   // Pitches Sent (founder-initiated requests to investors)
   const [pitchesSent, setPitchesSent] = useState<ConnectionRequestRecord[]>([]);
@@ -88,14 +130,26 @@ export function FounderDashboard() {
     formState: { errors, isSubmitting },
   } = useForm<FounderProfileFormData>({
     resolver: zodResolver(founderProfileSchema),
-    defaultValues: { stage: 'idea', contact_visibility: 'private' },
+    defaultValues: emptyFormValues(),
   });
 
-  const loadProfile = useCallback(async () => {
-    setIsLoadingProfile(true);
-    try {
-      const data = await apiGet<FounderProfile>('/api/v1/founder-profiles/me');
-      setProfile(data);
+  const activeProfile = useMemo(
+    () => profiles.find((p) => p.id === activeProfileId) ?? null,
+    [profiles, activeProfileId]
+  );
+
+  // Tier/limit comes from whichever profile we have — they all share the
+  // same owner, so verification_tier is identical across all of them.
+  const myTier: VerificationTier = profiles[0]?.verification_tier ?? 'starter';
+  const profileLimit = PROFILE_LIMITS[myTier];
+  const atProfileLimit = profileLimit !== null && profiles.length >= profileLimit;
+
+  const resetFormTo = useCallback(
+    (data: FounderProfile | null) => {
+      if (data === null) {
+        reset(emptyFormValues());
+        return;
+      }
       reset({
         startup_name: data.startup_name,
         tagline: data.tagline ?? '',
@@ -113,15 +167,28 @@ export function FounderDashboard() {
         startup_link: data.startup_link ?? '',
         contact_visibility: data.contact_visibility,
       });
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setProfile(null);
-        setIsEditing(true); // no profile yet — go straight to the creation form
+    },
+    [reset]
+  );
+
+  const loadProfiles = useCallback(async () => {
+    setIsLoadingProfiles(true);
+    try {
+      const data = await apiGet<FounderProfile[]>('/api/v1/founder-profiles/mine');
+      setProfiles(data);
+      if (data.length === 0) {
+        setActiveProfileId(null);
+        setIsCreatingNew(true);
+        resetFormTo(null);
+      } else {
+        setActiveProfileId((current) => (current && data.some((p) => p.id === current) ? current : data[0].id));
       }
+    } catch {
+      // Non-critical for the shell of the page to render.
     } finally {
-      setIsLoadingProfile(false);
+      setIsLoadingProfiles(false);
     }
-  }, [reset]);
+  }, [resetFormTo]);
 
   const loadConnections = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setIsLoadingConnections(true);
@@ -160,17 +227,23 @@ export function FounderDashboard() {
   }, []);
 
   useEffect(() => {
-    loadProfile();
+    loadProfiles();
     loadConnections();
     loadPitchesSent();
     apiGet<FounderAnalytics>('/api/v1/analytics/founder').then(setAnalytics).catch(() => {
       // Non-critical — the rest of the dashboard works without it.
     });
-  }, [loadProfile, loadConnections, loadPitchesSent]);
+  }, [loadProfiles, loadConnections, loadPitchesSent]);
 
   useEffect(() => {
     loadInvestors();
   }, [loadInvestors]);
+
+  // Keep the pitch composer defaulted to whichever profile is active,
+  // whenever that changes (switching startups or finishing a create).
+  useEffect(() => {
+    setPitchFromProfileId(activeProfileId);
+  }, [activeProfileId]);
 
   // Without this, a request accepted/declined elsewhere (or a new incoming
   // request) never shows up while this dashboard stays open — same staleness
@@ -184,6 +257,11 @@ export function FounderDashboard() {
     return () => clearInterval(interval);
   }, [loadConnections, loadPitchesSent]);
 
+  useEffect(() => {
+    if (!isEditing) return;
+    resetFormTo(isCreatingNew ? null : activeProfile);
+  }, [isEditing, isCreatingNew, activeProfile, resetFormTo]);
+
   const onSubmit = async (data: FounderProfileFormData) => {
     setFormError('');
     try {
@@ -192,27 +270,51 @@ export function FounderDashboard() {
         ...rest,
         gallery_image_urls: galleryRawToArray(gallery_image_urls_raw),
       };
-      const saved = await apiPut<FounderProfile>('/api/v1/founder-profiles/me', payload);
-      setProfile(saved);
+
+      if (isCreatingNew || activeProfile === null) {
+        const created = await apiPost<FounderProfile>('/api/v1/founder-profiles/mine', payload);
+        setProfiles((current) => [created, ...current]);
+        setActiveProfileId(created.id);
+      } else {
+        const saved = await apiPut<FounderProfile>(`/api/v1/founder-profiles/${activeProfile.id}`, payload);
+        setProfiles((current) => current.map((p) => (p.id === saved.id ? saved : p)));
+      }
       setIsEditing(false);
+      setIsCreatingNew(false);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Could not save your profile. Please try again.');
     }
   };
 
   const togglePublish = async () => {
-    if (!profile) return;
+    if (!activeProfile) return;
     setPublishError('');
     setIsTogglingPublish(true);
     try {
       const updated = await apiPatch<FounderProfile>(
-        `/api/v1/founder-profiles/me/publish?published=${!profile.published}`
+        `/api/v1/founder-profiles/${activeProfile.id}/publish?published=${!activeProfile.published}`
       );
-      setProfile(updated);
+      setProfiles((current) => current.map((p) => (p.id === updated.id ? updated : p)));
     } catch (err) {
       setPublishError(err instanceof ApiError ? err.message : 'Could not update publish status.');
     } finally {
       setIsTogglingPublish(false);
+    }
+  };
+
+  const deleteActiveProfile = async () => {
+    if (!activeProfile) return;
+    if (!window.confirm(`Delete "${activeProfile.startup_name}"? This can't be undone.`)) return;
+    setDeleteError('');
+    setIsDeleting(true);
+    try {
+      await apiDelete(`/api/v1/founder-profiles/${activeProfile.id}`);
+      setProfiles((current) => current.filter((p) => p.id !== activeProfile.id));
+      setActiveProfileId(null);
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Could not delete this profile.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -232,11 +334,16 @@ export function FounderDashboard() {
   };
 
   const sendPitch = async (investorUserId: string) => {
+    if (!pitchFromProfileId) {
+      setPitchError('Create a startup profile before pitching investors.');
+      return;
+    }
     setPitchError('');
     setPendingInvestorId(investorUserId);
     try {
       await apiPost('/api/v1/connections/to-investor', {
         investor_user_id: investorUserId,
+        founder_profile_id: pitchFromProfileId,
         message: pitchMessage || undefined,
       });
       setComposingForInvestor(null);
@@ -258,7 +365,6 @@ export function FounderDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Activity */}
       {analytics && (
         <section className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -279,10 +385,8 @@ export function FounderDashboard() {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`shrink-0 px-4 py-3 text-sm font-medium transition ${
-              tab === t.id
-                ? 'border-b-2 border-primaryBlue text-primaryText'
-                : 'text-secondaryText hover:text-primaryText'
+            className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
+              tab === t.id ? 'border-primaryBlue text-primaryBlue' : 'border-transparent text-secondaryText hover:text-primaryText'
             }`}
           >
             {t.label}
@@ -292,221 +396,306 @@ export function FounderDashboard() {
 
       {tab === 'profile' && (
         <section className="rounded-card border border-borderColor bg-cardBg p-6 sm:p-8">
-          {isLoadingProfile ? (
+          {isLoadingProfiles ? (
             <p className="text-secondaryText">Loading your profile...</p>
-          ) : isEditing ? (
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-              <h2 className="text-xl font-semibold">
-                {profile ? 'Edit your startup profile' : 'Create your startup profile'}
-              </h2>
-
-              {formError && (
-                <div className="rounded-[14px] border border-error bg-error/10 p-4 text-sm text-error">
-                  {formError}
-                </div>
-              )}
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Startup Name</label>
-                  <Input placeholder="e.g. Payflow" {...register('startup_name')} />
-                  {errors.startup_name && <p className="mt-1 text-sm text-error">{errors.startup_name.message}</p>}
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Tagline</label>
-                  <Input placeholder="One line describing what you do" {...register('tagline')} />
-                  {errors.tagline && <p className="mt-1 text-sm text-error">{errors.tagline.message}</p>}
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Description</label>
-                  <Textarea rows={4} placeholder="What are you building, and for whom?" {...register('description')} />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Sector</label>
-                  <Input placeholder="e.g. Fintech" {...register('sector')} />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Stage</label>
-                  <Select {...register('stage')}>
-                    {STAGE_OPTIONS.map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Funding Ask Min (USD)</label>
-                  <Input type="number" min={0} placeholder="500000" {...register('funding_ask_min')} />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Funding Ask Max (USD)</label>
-                  <Input type="number" min={0} placeholder="2000000" {...register('funding_ask_max')} />
-                  {errors.funding_ask_max && (
-                    <p className="mt-1 text-sm text-error">{errors.funding_ask_max.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Country</label>
-                  <Input placeholder="Nigeria" {...register('location_country')} />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">City</label>
-                  <Input placeholder="Lagos" {...register('location_city')} />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Pitch Deck URL</label>
-                  <Input placeholder="https://..." {...register('pitch_deck_url')} />
-                  {errors.pitch_deck_url && <p className="mt-1 text-sm text-error">{errors.pitch_deck_url.message}</p>}
-                </div>
-
-                <MediaUploadField
-                  kind="demo_video"
-                  label="Demo Video"
-                  value={watch('demo_video_url') ?? ''}
-                  onChange={(url) => setValue('demo_video_url', url, { shouldDirty: true })}
-                />
-
-                <MediaUploadField
-                  kind="profile_picture"
-                  label="Profile Picture"
-                  value={watch('profile_picture_url') ?? ''}
-                  onChange={(url) => setValue('profile_picture_url', url, { shouldDirty: true })}
-                />
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Startup Link</label>
-                  <Input placeholder="https://yourstartup.com" {...register('startup_link')} />
-                  {errors.startup_link && <p className="mt-1 text-sm text-error">{errors.startup_link.message}</p>}
-                  <p className="mt-1 text-xs text-secondaryText">Shown as a preview card on your profile.</p>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <GalleryUploadField
-                    value={galleryRawToArray(watch('gallery_image_urls_raw'))}
-                    onChange={(urls) => setValue('gallery_image_urls_raw', urls.join('\n'), { shouldDirty: true })}
-                  />
-                  {errors.gallery_image_urls_raw && (
-                    <p className="mt-1 text-sm text-error">{errors.gallery_image_urls_raw.message}</p>
-                  )}
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-secondaryText">Contact Visibility</label>
-                  <Select {...register('contact_visibility')}>
-                    <option value="private">Private — reveal only after I accept a connection request</option>
-                    <option value="public">Public — show my email on my profile</option>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save Profile'}
-                </Button>
-                {profile && (
-                  <Button type="button" variant="secondary" onClick={() => setIsEditing(false)}>
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            </form>
-          ) : profile ? (
-            <div>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex items-start gap-4">
-                  {profile.profile_picture_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={profile.profile_picture_url}
-                      alt={profile.startup_name}
-                      className="h-16 w-16 shrink-0 rounded-full border border-borderColor object-cover"
-                    />
-                  )}
-                  <div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-2xl font-bold">{profile.startup_name}</h2>
-                      <Badge tone={profile.published ? 'success' : 'warning'}>
-                        {profile.published ? 'Published' : 'Draft'}
-                      </Badge>
-                      <VerificationBadge tier={profile.verification_tier} />
-                      <Link
-                        href="/billing"
-                        className="rounded-button bg-primaryBlue px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-hoverBlue"
+          ) : (
+            <>
+              {!isEditing && profiles.length > 0 && (
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {profiles.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => setActiveProfileId(p.id)}
+                        className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                          p.id === activeProfileId
+                            ? 'border-primaryBlue bg-primaryBlue/10 text-primaryBlue'
+                            : 'border-borderColor text-secondaryText hover:border-primaryBlue/40'
+                        }`}
                       >
-                        {profile.verification_tier === 'starter' ? 'Upgrade' : 'Manage plan'}
-                      </Link>
-                    </div>
-                    {profile.tagline && <p className="mt-2 text-secondaryText">{profile.tagline}</p>}
-                    <p className="mt-1 text-sm text-secondaryText">
-                      {STAGE_LABELS[profile.stage]}
-                      {profile.sector ? ` · ${profile.sector}` : ''}
-                      {profile.location_city ? ` · ${profile.location_city}` : ''}
-                    </p>
+                        {p.startup_name || 'Untitled startup'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-secondaryText">
+                      {profiles.length}
+                      {profileLimit !== null ? ` / ${profileLimit}` : ''} startup{profiles.length === 1 ? '' : 's'}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={atProfileLimit}
+                      onClick={() => {
+                        setIsCreatingNew(true);
+                        setIsEditing(true);
+                      }}
+                    >
+                      + New startup
+                    </Button>
                   </div>
                 </div>
-                <div className="flex gap-3">
-                  <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-                    Edit Profile
-                  </Button>
-                  <Button size="sm" onClick={togglePublish} disabled={isTogglingPublish}>
-                    {isTogglingPublish ? 'Updating...' : profile.published ? 'Unpublish' : 'Publish'}
-                  </Button>
-                </div>
-              </div>
-              {publishError && <p className="mt-3 text-sm text-error">{publishError}</p>}
-              {profile.description && <p className="mt-4 whitespace-pre-line text-secondaryText">{profile.description}</p>}
-
-              {profile.startup_link && (
-                <div className="mt-4">
-                  <LinkPreviewCard url={profile.startup_link} />
-                </div>
               )}
 
-              {profile.demo_video_url && (
-                // eslint-disable-next-line jsx-a11y/media-has-caption
-                <video
-                  src={profile.demo_video_url}
-                  controls
-                  className="mt-4 max-h-80 w-full rounded-input border border-borderColor"
-                />
-              )}
-
-              {profile.gallery_image_urls.length > 0 && (
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {profile.gallery_image_urls.map((src) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={src}
-                      src={src}
-                      alt={`${profile.startup_name} screenshot`}
-                      className="h-32 w-full rounded-input border border-borderColor object-cover"
-                    />
-                  ))}
-                </div>
-              )}
-
-              {!profile.published && (
-                <p className="mt-4 text-sm text-secondaryText">
-                  Your profile is a draft — investors can&apos;t discover it until you publish.
+              {atProfileLimit && !isEditing && (
+                <p className="mb-4 text-xs text-secondaryText">
+                  Your {VERIFICATION_LABELS[myTier]} plan allows up to {profileLimit} startup profile
+                  {profileLimit === 1 ? '' : 's'}.{' '}
+                  <Link href="/billing" className="text-primaryBlue hover:underline">
+                    Upgrade
+                  </Link>{' '}
+                  to add more.
                 </p>
               )}
-            </div>
-          ) : null}
+
+              {isEditing ? (
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                  <h2 className="text-xl font-semibold">
+                    {isCreatingNew ? 'Create a new startup profile' : `Edit ${activeProfile?.startup_name ?? 'profile'}`}
+                  </h2>
+
+                  {formError && <p className="text-sm text-error">{formError}</p>}
+
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Startup Name</label>
+                      <Input {...register('startup_name')} />
+                      {errors.startup_name && <p className="mt-1 text-xs text-error">{errors.startup_name.message}</p>}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Tagline</label>
+                      <Input {...register('tagline')} />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Description</label>
+                      <Textarea rows={4} {...register('description')} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Sector</label>
+                      <Input {...register('sector')} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Stage</label>
+                      <Select {...register('stage')}>
+                        {STAGE_OPTIONS.map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Funding Ask Min (USD)</label>
+                      <Input type="number" {...register('funding_ask_min')} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Funding Ask Max (USD)</label>
+                      <Input type="number" {...register('funding_ask_max')} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Country</label>
+                      <Input {...register('location_country')} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">City</label>
+                      <Input {...register('location_city')} />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Startup Link</label>
+                      <Input {...register('startup_link')} placeholder="https://..." />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <MediaUploadField
+                        label="Profile Picture"
+                        value={watch('profile_picture_url') ?? ''}
+                        onChange={(url) => setValue('profile_picture_url', url)}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <MediaUploadField
+                        label="Pitch Deck"
+                        value={watch('pitch_deck_url') ?? ''}
+                        onChange={(url) => setValue('pitch_deck_url', url)}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <MediaUploadField
+                        label="Demo Video"
+                        value={watch('demo_video_url') ?? ''}
+                        onChange={(url) => setValue('demo_video_url', url)}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <GalleryUploadField
+                        value={galleryRawToArray(watch('gallery_image_urls_raw'))}
+                        onChange={(urls) => setValue('gallery_image_urls_raw', urls.join('\n'))}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Contact Visibility</label>
+                      <Select {...register('contact_visibility')}>
+                        <option value="private">Private — reveal only after I accept a connection request</option>
+                        <option value="public">Public — show my email on my profile</option>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? 'Saving...' : isCreatingNew ? 'Create Profile' : 'Save Profile'}
+                    </Button>
+                    {profiles.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          setIsEditing(false);
+                          setIsCreatingNew(false);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </form>
+              ) : activeProfile ? (
+                <div>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      {activeProfile.profile_picture_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={activeProfile.profile_picture_url}
+                          alt={activeProfile.startup_name}
+                          className="h-16 w-16 shrink-0 rounded-full border border-borderColor object-cover"
+                        />
+                      )}
+                      <div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h2 className="text-2xl font-bold">{activeProfile.startup_name}</h2>
+                          <Badge tone={activeProfile.published ? 'success' : 'warning'}>
+                            {activeProfile.published ? 'Published' : 'Draft'}
+                          </Badge>
+                          <VerificationBadge tier={activeProfile.verification_tier} />
+                          <Link
+                            href="/billing"
+                            className="rounded-button bg-primaryBlue px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-hoverBlue"
+                          >
+                            {activeProfile.verification_tier === 'starter' ? 'Upgrade' : 'Manage plan'}
+                          </Link>
+                        </div>
+                        {activeProfile.tagline && <p className="mt-2 text-secondaryText">{activeProfile.tagline}</p>}
+                        <p className="mt-1 text-sm text-secondaryText">
+                          {STAGE_LABELS[activeProfile.stage]}
+                          {activeProfile.sector ? ` · ${activeProfile.sector}` : ''}
+                          {activeProfile.location_city ? ` · ${activeProfile.location_city}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                        Edit Profile
+                      </Button>
+                      <Button size="sm" onClick={togglePublish} disabled={isTogglingPublish}>
+                        {isTogglingPublish ? 'Updating...' : activeProfile.published ? 'Unpublish' : 'Publish'}
+                      </Button>
+                    </div>
+                  </div>
+                  {publishError && <p className="mt-3 text-sm text-error">{publishError}</p>}
+
+                  {activeProfile.verification_tier === 'premium' && activeProfile.published && activeProfile.published_until && (
+                    <p className="mt-3 text-xs text-secondaryText">
+                      This profile stays published until{' '}
+                      {new Date(activeProfile.published_until).toLocaleDateString()} — republish any time to extend it
+                      another 90 days.
+                    </p>
+                  )}
+
+                  {activeProfile.description && (
+                    <p className="mt-4 whitespace-pre-line text-secondaryText">{activeProfile.description}</p>
+                  )}
+
+                  {activeProfile.startup_link && (
+                    <div className="mt-4">
+                      <LinkPreviewCard url={activeProfile.startup_link} />
+                    </div>
+                  )}
+
+                  {activeProfile.demo_video_url && (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <video
+                      src={activeProfile.demo_video_url}
+                      controls
+                      className="mt-4 max-h-80 w-full rounded-input border border-borderColor"
+                    />
+                  )}
+
+                  {activeProfile.gallery_image_urls.length > 0 && (
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {activeProfile.gallery_image_urls.map((src) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={src}
+                          src={src}
+                          alt={`${activeProfile.startup_name} screenshot`}
+                          className="h-32 w-full rounded-input border border-borderColor object-cover"
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {!activeProfile.published && (
+                    <p className="mt-4 text-sm text-secondaryText">
+                      This profile is a draft — investors can&apos;t discover it until you publish.
+                    </p>
+                  )}
+
+                  <div className="mt-6 border-t border-borderColor pt-4">
+                    {deleteError && <p className="mb-2 text-sm text-error">{deleteError}</p>}
+                    <button
+                      onClick={deleteActiveProfile}
+                      disabled={isDeleting}
+                      className="text-xs font-medium text-error hover:underline disabled:opacity-50"
+                    >
+                      {isDeleting ? 'Deleting...' : 'Delete this startup profile'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </section>
       )}
 
       {tab === 'discover-investors' && (
         <section className="space-y-5">
+          {profiles.length > 1 && (
+            <div className="rounded-card border border-borderColor bg-cardBg p-4">
+              <label className="mb-1 block text-xs font-medium text-secondaryText">Pitching as</label>
+              <Select value={pitchFromProfileId ?? ''} onChange={(e) => setPitchFromProfileId(e.target.value)}>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.startup_name || 'Untitled startup'}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           <div className="grid gap-3 rounded-card border border-borderColor bg-cardBg p-5 sm:grid-cols-2 lg:grid-cols-4">
             <Input
               placeholder="Search investors..."
@@ -575,6 +764,7 @@ export function FounderDashboard() {
                     </div>
                     <Button
                       size="sm"
+                      disabled={!pitchFromProfileId}
                       onClick={() => setComposingForInvestor(composingForInvestor === investor.user_id ? null : investor.user_id)}
                     >
                       Pitch
@@ -622,7 +812,10 @@ export function FounderDashboard() {
               {pitchesSent.map((pitch) => (
                 <li key={pitch.id} className="rounded-input border border-borderColor bg-secondaryBg p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="font-medium">{pitch.investor_email ?? 'An investor'}</p>
+                    <div>
+                      <p className="font-medium">{pitch.investor_email ?? 'An investor'}</p>
+                      {pitch.startup_name && <p className="text-xs text-secondaryText">from {pitch.startup_name}</p>}
+                    </div>
                     <Badge
                       tone={pitch.status === 'accepted' ? 'success' : pitch.status === 'declined' ? 'error' : 'warning'}
                     >
@@ -665,6 +858,9 @@ export function FounderDashboard() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-medium">{connection.investor_email ?? 'An investor'}</p>
+                      {connection.startup_name && (
+                        <p className="text-xs text-secondaryText">for {connection.startup_name}</p>
+                      )}
                       <p className="text-xs text-secondaryText">
                         {new Date(connection.created_at).toLocaleDateString()}
                       </p>

@@ -40,6 +40,8 @@ export interface FounderProfile {
   contact_visibility: ContactVisibility;
   verification_tier: VerificationTier;
   published: boolean;
+  /** Set only for premium founders — the profile auto-unpublishes at this timestamp (90 days after publishing). */
+  published_until: string | null;
   is_spotlighted: boolean;
   created_at: string;
   contact: FounderContact | null;
