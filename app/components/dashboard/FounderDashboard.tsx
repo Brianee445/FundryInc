@@ -516,6 +516,7 @@ export function FounderDashboard() {
 
                     <div className="sm:col-span-2">
                       <MediaUploadField
+                        kind="profile_picture"
                         label="Profile Picture"
                         value={watch('profile_picture_url') ?? ''}
                         onChange={(url) => setValue('profile_picture_url', url)}
@@ -523,15 +524,13 @@ export function FounderDashboard() {
                     </div>
 
                     <div className="sm:col-span-2">
-                      <MediaUploadField
-                        label="Pitch Deck"
-                        value={watch('pitch_deck_url') ?? ''}
-                        onChange={(url) => setValue('pitch_deck_url', url)}
-                      />
+                      <label className="mb-1 block text-sm font-medium text-secondaryText">Pitch Deck URL</label>
+                      <Input {...register('pitch_deck_url')} placeholder="https://..." />
                     </div>
 
                     <div className="sm:col-span-2">
                       <MediaUploadField
+                        kind="demo_video"
                         label="Demo Video"
                         value={watch('demo_video_url') ?? ''}
                         onChange={(url) => setValue('demo_video_url', url)}
