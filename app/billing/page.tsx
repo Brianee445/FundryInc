@@ -115,7 +115,7 @@ function BillingPageContent() {
     }
   }, [isAuthenticated, user, loadAll]);
 
-  // Bachs redirects back here via return_url/cancel_url. That redirect is
+  // Paystack redirects back here via the callback URL after payment. That redirect is
   // UX only — the webhook is what actually grants the tier, and it can
   // land slightly before or after this page does, so we just re-fetch and
   // show a status message either way.
@@ -338,7 +338,7 @@ function BillingPageContent() {
           </div>
 
           <p className="mt-4 text-center text-xs text-secondaryText">
-            You&apos;ll be redirected to Bachs&apos; secure checkout. Cancel anytime.
+            You&apos;ll be redirected to Paystack&apos;s secure checkout. Cancel anytime.
           </p>
         </section>
 
