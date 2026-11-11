@@ -90,6 +90,7 @@ export function FounderDashboard() {
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [profilesLoadError, setProfilesLoadError] = useState('');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [formError, setFormError] = useState('');
   const [publishError, setPublishError] = useState('');
@@ -173,18 +174,22 @@ export function FounderDashboard() {
 
   const loadProfiles = useCallback(async () => {
     setIsLoadingProfiles(true);
+    setProfilesLoadError('');
     try {
       const data = await apiGet<FounderProfile[]>('/api/v1/founder-profiles/mine');
       setProfiles(data);
       if (data.length === 0) {
         setActiveProfileId(null);
         setIsCreatingNew(true);
+        setIsEditing(true);
         resetFormTo(null);
       } else {
         setActiveProfileId((current) => (current && data.some((p) => p.id === current) ? current : data[0].id));
       }
-    } catch {
-      // Non-critical for the shell of the page to render.
+    } catch (err) {
+      setProfilesLoadError(
+        err instanceof ApiError ? err.message : 'Could not load your profile. Check your connection.'
+      );
     } finally {
       setIsLoadingProfiles(false);
     }
@@ -398,6 +403,13 @@ export function FounderDashboard() {
         <section className="rounded-card border border-borderColor bg-cardBg p-6 sm:p-8">
           {isLoadingProfiles ? (
             <p className="text-secondaryText">Loading your profile...</p>
+          ) : profilesLoadError ? (
+            <div className="rounded-input border border-error bg-error/10 p-5 text-sm text-error">
+              <p>{profilesLoadError}</p>
+              <Button size="sm" variant="secondary" className="mt-3" onClick={loadProfiles}>
+                Retry
+              </Button>
+            </div>
           ) : (
             <>
               {!isEditing && profiles.length > 0 && (
