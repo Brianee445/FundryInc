@@ -74,6 +74,7 @@ export function InvestorDashboard() {
   const [isLoadingInvestorProfile, setIsLoadingInvestorProfile] = useState(true);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileFormError, setProfileFormError] = useState('');
+  const [profileLoadError, setProfileLoadError] = useState('');
   const [publishError, setPublishError] = useState('');
   const [isTogglingPublish, setIsTogglingPublish] = useState(false);
 
@@ -131,6 +132,7 @@ export function InvestorDashboard() {
 
   const loadInvestorProfile = useCallback(async () => {
     setIsLoadingInvestorProfile(true);
+    setProfileLoadError('');
     try {
       const data = await apiGet<InvestorProfile>('/api/v1/investor-profiles/me');
       setInvestorProfile(data);
@@ -147,9 +149,14 @@ export function InvestorDashboard() {
         contact_visibility: data.contact_visibility,
       });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setInvestorProfile(null);
+      const status = (err as { status?: number })?.status;
+      setInvestorProfile(null);
+      if (status === 404) {
         setIsEditingProfile(true);
+      } else {
+        setProfileLoadError(
+          err instanceof ApiError ? err.message : 'Could not load your profile. Check your connection.'
+        );
       }
     } finally {
       setIsLoadingInvestorProfile(false);
@@ -534,6 +541,13 @@ export function InvestorDashboard() {
           </p>
           {isLoadingInvestorProfile ? (
             <p className="text-secondaryText">Loading your profile...</p>
+          ) : profileLoadError ? (
+            <div className="rounded-input border border-error bg-error/10 p-5 text-sm text-error">
+              <p>{profileLoadError}</p>
+              <Button size="sm" variant="secondary" className="mt-3" onClick={loadInvestorProfile}>
+                Retry
+              </Button>
+            </div>
           ) : isEditingProfile ? (
             <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-5">
               <h2 className="text-xl font-semibold">
