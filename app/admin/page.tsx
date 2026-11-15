@@ -40,11 +40,13 @@ interface PreviewResult {
   used_fallback: boolean;
   fallback_reason: string | null;
   samples: Sample[];
+  signoff_name: string;
+  signoff_title: string;
 }
 
 type LogItem =
   | { id: number; kind: 'text'; role: 'bot' | 'user'; text: string; tone?: 'error' | 'success' }
-  | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean; reason?: string | null; samples?: Sample[] };
+  | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean; reason?: string | null; samples?: Sample[]; signoff?: string[] };
 
 // Omit<> on a union collapses it, so strip `id` from each member separately.
 type LogInput = LogItem extends infer T ? (T extends { id: number } ? Omit<T, 'id'> : never) : never;
@@ -253,7 +255,7 @@ export default function AdminPage() {
     try {
       const data = await adminFetch<PreviewResult>('/api/v1/admin/waitlist/preview-launch', token, { method: 'POST' });
       setDraft({ subject: data.subject, body: data.body, fallback: data.used_fallback });
-      push({ kind: 'email', subject: data.subject, body: data.body, fallback: data.used_fallback, reason: data.fallback_reason, samples: data.samples });
+      push({ kind: 'email', subject: data.subject, body: data.body, fallback: data.used_fallback, reason: data.fallback_reason, samples: data.samples, signoff: data.signoff_name ? [data.signoff_name, data.signoff_title] : [] });
       push({ kind: 'text', role: 'bot', text: 'That is the draft. Send it as is, or tap Rewrite for another version.' });
     } catch (err) {
       if (err instanceof AdminAuthError) logout(err.message);
@@ -416,19 +418,30 @@ export default function AdminPage() {
                     </p>
                   </div>
                   <div className="space-y-3 px-4 py-3 text-sm leading-relaxed">
-                    <p className="text-gray-500">Hi [first name],</p>
+                    <p className="text-gray-500">{item.samples?.[0]?.greeting ?? 'Hi there,'}</p>
                     <p className="whitespace-pre-wrap">{item.body}</p>
                     <div className="flex flex-wrap gap-2 pt-1">
                       <span className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Open Fundry</span>
                       <span className="rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white">Follow us on X</span>
                       <span className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white">Subscribe on YouTube</span>
                     </div>
-                    <p>The Fundry Team</p>
+                    {item.signoff && item.signoff.length > 0 ? (
+                      <p>
+                        Warm regards,
+                        {item.signoff.map((line) => (
+                          <span key={line} className="block">
+                            {line}
+                          </span>
+                        ))}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-600">No sign-off yet. Set SIGNOFF_NAME on Render.</p>
+                    )}
                   </div>
                 </div>
                 {item.samples && item.samples.length > 0 && (
                   <p className="text-[11px] text-secondaryText">
-                    Greetings I&apos;ll use: {item.samples.map((x) => x.greeting.replace(/^Hi |,$/g, '')).join(', ')}
+                    Sample greetings (first people in line): {item.samples.map((x) => x.greeting.replace(/^Hi |,$/g, '')).join(', ')}
                     {item.samples.some((x) => x.company) ? ' (investor company lines added where known)' : ''}
                   </p>
                 )}
