@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/app/components/ui/Button';
 import { Input } from '@/app/components/ui/Input';
 
@@ -27,6 +27,16 @@ interface SendResult {
   warning: string | null;
 }
 
+interface PreviewResult {
+  subject: string;
+  body: string;
+  used_fallback: boolean;
+}
+
+type LogItem =
+  | { id: number; kind: 'text'; role: 'bot' | 'user'; text: string; tone?: 'error' | 'success' }
+  | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean };
+
 class AdminAuthError extends Error {}
 
 async function adminFetch<T>(path: string, token: string | null, init: RequestInit = {}): Promise<T> {
@@ -46,6 +56,67 @@ async function adminFetch<T>(path: string, token: string | null, init: RequestIn
   return data as T;
 }
 
+function BotAvatar({ size = 44, busy = false }: { size?: number; busy?: boolean }) {
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      {busy && <span className="absolute inset-0 animate-ping rounded-2xl bg-blue-500/40" />}
+      <svg viewBox="0 0 48 48" width={size} height={size} className="relative" aria-hidden>
+        <defs>
+          <linearGradient id="botg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#3b82f6" />
+            <stop offset="1" stopColor="#6366f1" />
+          </linearGradient>
+        </defs>
+        <line x1="24" y1="4" x2="24" y2="10" stroke="#93c5fd" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="24" cy="4" r="3" fill="#60a5fa">
+          {busy && <animate attributeName="opacity" values="1;0.2;1" dur="0.9s" repeatCount="indefinite" />}
+        </circle>
+        <rect x="6" y="10" width="36" height="30" rx="10" fill="url(#botg)" />
+        <rect x="11" y="16" width="26" height="16" rx="6" fill="#0b1020" />
+        <circle cx="19" cy="24" r="3" fill="#67e8f9" />
+        <circle cx="29" cy="24" r="3" fill="#67e8f9" />
+        <rect x="19" y="35" width="10" height="2" rx="1" fill="#c7d2fe" />
+      </svg>
+    </div>
+  );
+}
+
+function Bubble({ role, tone, children }: { role: 'bot' | 'user'; tone?: 'error' | 'success'; children: React.ReactNode }) {
+  if (role === 'user') {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-blue-600 px-4 py-2.5 text-sm text-white">{children}</div>
+      </div>
+    );
+  }
+  const toneClass =
+    tone === 'error'
+      ? 'border-red-500/40 bg-red-500/10 text-red-200'
+      : tone === 'success'
+        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+        : 'border-white/10 bg-white/5 text-gray-100';
+  return (
+    <div className="flex items-start gap-2.5">
+      <BotAvatar size={28} />
+      <div className={`max-w-[85%] rounded-2xl rounded-tl-sm border px-4 py-2.5 text-sm ${toneClass}`}>{children}</div>
+    </div>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-1.5 w-1.5 animate-bounce rounded-full bg-blue-300"
+          style={{ animationDelay: `${i * 150}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -54,15 +125,24 @@ export default function AdminPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [isSending, setIsSending] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<SendResult | null>(null);
+  const [stage, setStage] = useState<'idle' | 'writing' | 'sending'>('idle');
+  const [draft, setDraft] = useState<{ subject: string; body: string; fallback: boolean } | null>(null);
+  const [log, setLog] = useState<LogItem[]>([]);
+  const nextId = useRef(1);
+  const endRef = useRef<HTMLDivElement>(null);
+  const greeted = useRef(false);
+
+  const push = useCallback((item: Omit<LogItem, 'id'>) => {
+    setLog((l) => [...l, { ...item, id: nextId.current++ } as LogItem]);
+  }, []);
 
   const logout = useCallback((message = '') => {
     sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setSummary(null);
-    setResult(null);
+    setLog([]);
+    setDraft(null);
+    greeted.current = false;
     setLoginError(message);
   }, []);
 
@@ -72,10 +152,10 @@ export default function AdminPage() {
         setSummary(await adminFetch<Summary>('/api/v1/admin/waitlist/summary', t));
       } catch (err) {
         if (err instanceof AdminAuthError) logout(err.message);
-        else setError(err instanceof Error ? err.message : 'Could not load waitlist stats.');
+        else push({ kind: 'text', role: 'bot', tone: 'error', text: err instanceof Error ? err.message : 'Could not load waitlist stats.' });
       }
     },
-    [logout]
+    [logout, push]
   );
 
   useEffect(() => {
@@ -86,6 +166,25 @@ export default function AdminPage() {
     }
     setReady(true);
   }, [loadSummary]);
+
+  // First-load greeting.
+  useEffect(() => {
+    if (!summary || greeted.current) return;
+    greeted.current = true;
+    if (summary.pending === 0) {
+      push({ kind: 'text', role: 'bot', text: `Hi! Everyone on the waitlist (${summary.total}) has already been notified. Nothing left for me to send.` });
+    } else {
+      push({
+        kind: 'text',
+        role: 'bot',
+        text: `Hi! I'm the Fundry launch bot. ${summary.pending} ${summary.pending === 1 ? 'person is' : 'people are'} waiting. Tap Preview and I'll draft the announcement with Gemini so you can check it before it goes out to the next ${summary.next_batch}.`,
+      });
+    }
+  }, [summary, push]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [log, stage]);
 
   const onLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -107,21 +206,50 @@ export default function AdminPage() {
     }
   };
 
-  const onSend = async () => {
-    if (!token || !summary) return;
-    if (!window.confirm(`Draft with Gemini and send the launch email to ${summary.next_batch} people now?`)) return;
-    setError('');
-    setResult(null);
-    setIsSending(true);
+  const onPreview = async () => {
+    if (!token || stage !== 'idle') return;
+    push({ kind: 'text', role: 'user', text: draft ? 'Write a different version' : 'Write the launch email' });
+    setStage('writing');
     try {
-      const data = await adminFetch<SendResult>('/api/v1/admin/waitlist/send-launch', token, { method: 'POST' });
-      setResult(data);
+      const data = await adminFetch<PreviewResult>('/api/v1/admin/waitlist/preview-launch', token, { method: 'POST' });
+      setDraft({ subject: data.subject, body: data.body, fallback: data.used_fallback });
+      push({ kind: 'email', subject: data.subject, body: data.body, fallback: data.used_fallback });
+      push({ kind: 'text', role: 'bot', text: 'That is the draft. Send it as is, or tap Rewrite for another version.' });
+    } catch (err) {
+      if (err instanceof AdminAuthError) logout(err.message);
+      else push({ kind: 'text', role: 'bot', tone: 'error', text: err instanceof Error ? err.message : 'Could not write the draft.' });
+    } finally {
+      setStage('idle');
+    }
+  };
+
+  const onSend = async () => {
+    if (!token || !summary || !draft || stage !== 'idle') return;
+    if (!window.confirm(`Send this email to ${summary.next_batch} people now?`)) return;
+
+    push({ kind: 'text', role: 'user', text: 'Looks good, send it 🚀' });
+    setStage('sending');
+    try {
+      const data = await adminFetch<SendResult>('/api/v1/admin/waitlist/send-launch', token, {
+        method: 'POST',
+        body: JSON.stringify({ subject: draft.subject, body: draft.body, used_fallback: draft.fallback }),
+      });
+      setDraft(null);
+      push({
+        kind: 'text',
+        role: 'bot',
+        tone: 'success',
+        text: `Done! Sent to ${data.sent} ${data.sent === 1 ? 'person' : 'people'}. ${
+          data.remaining > 0 ? `${data.remaining} still pending. Preview again for the next batch.` : 'The whole waitlist has been notified. 🎉'
+        }${data.failed > 0 ? ` (${data.failed} bad ${data.failed === 1 ? 'address' : 'addresses'} skipped.)` : ''}`,
+      });
+      if (data.warning) push({ kind: 'text', role: 'bot', tone: 'error', text: data.warning });
       loadSummary(token);
     } catch (err) {
       if (err instanceof AdminAuthError) logout(err.message);
-      else setError(err instanceof Error ? err.message : 'Send failed.');
+      else push({ kind: 'text', role: 'bot', tone: 'error', text: err instanceof Error ? err.message : 'Send failed.' });
     } finally {
-      setIsSending(false);
+      setStage('idle');
     }
   };
 
@@ -130,8 +258,14 @@ export default function AdminPage() {
   if (!token) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md items-center px-6">
-        <form onSubmit={onLogin} className="w-full space-y-4 rounded-card border border-borderColor bg-cardBg p-8">
-          <h1 className="text-2xl font-bold">Admin access</h1>
+        <form onSubmit={onLogin} className="w-full space-y-5 rounded-3xl border border-white/10 bg-white/5 p-8 text-center backdrop-blur">
+          <div className="flex justify-center">
+            <BotAvatar size={72} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Fundry Launch Bot</h1>
+            <p className="mt-1 text-sm text-secondaryText">Enter the passcode to wake me up.</p>
+          </div>
           {loginError && (
             <div className="rounded-[14px] border border-error bg-error/10 p-3 text-sm text-error">{loginError}</div>
           )}
@@ -142,77 +276,128 @@ export default function AdminPage() {
             value={passcode}
             onChange={(e) => setPasscode(e.target.value)}
           />
-          <Button type="submit" disabled={isLoggingIn || !passcode}>
-            {isLoggingIn ? 'Checking...' : 'Enter'}
+          <Button type="submit" disabled={isLoggingIn || !passcode} className="w-full">
+            {isLoggingIn ? 'Checking...' : 'Wake the bot'}
           </Button>
         </form>
       </main>
     );
   }
 
-  const notReady = summary && (!summary.gemini_configured || !summary.email_configured);
+  const needsSetup = summary && (!summary.gemini_configured || !summary.email_configured);
+  const canPreview = !!summary && summary.next_batch > 0 && stage === 'idle';
+  const canSend = canPreview && !!summary?.email_configured && !!draft;
 
   return (
-    <main className="mx-auto max-w-2xl space-y-6 px-6 py-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Waitlist launch email</h1>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-4 px-4 py-6">
+      <header className="flex items-center gap-3">
+        <BotAvatar busy={stage !== 'idle'} />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-bold">Fundry Launch Bot</h1>
+          <p className="flex items-center gap-1.5 text-xs text-secondaryText">
+            <span className={`h-2 w-2 rounded-full ${needsSetup ? 'bg-amber-400' : 'bg-emerald-400'} ${stage !== 'idle' ? 'animate-pulse' : ''}`} />
+            {stage === 'writing' ? 'Writing with Gemini…' : stage === 'sending' ? 'Sending emails…' : needsSetup ? 'Needs setup' : 'Online'}
+          </p>
+        </div>
         <Button size="sm" variant="secondary" onClick={() => logout()}>
           Log out
         </Button>
-      </div>
-
-      {error && <div className="rounded-[14px] border border-error bg-error/10 p-4 text-sm text-error">{error}</div>}
+      </header>
 
       {summary && (
-        <section className="space-y-5 rounded-card border border-borderColor bg-cardBg p-6">
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div>
-              <p className="text-2xl font-bold">{summary.total}</p>
-              <p className="text-xs text-secondaryText">On waitlist</p>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'On waitlist', value: summary.total },
+            { label: 'Notified', value: summary.notified },
+            { label: 'Pending', value: summary.pending },
+          ].map((s) => (
+            <div key={s.label} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-center">
+              <p className="text-2xl font-bold tabular-nums">{s.value}</p>
+              <p className="text-[11px] uppercase tracking-wide text-secondaryText">{s.label}</p>
             </div>
-            <div>
-              <p className="text-2xl font-bold">{summary.notified}</p>
-              <p className="text-xs text-secondaryText">Notified</p>
+          ))}
+        </div>
+      )}
+
+      {needsSetup && summary && (
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-3 text-xs text-amber-200">
+          Missing server config:{' '}
+          {!summary.gemini_configured && 'GEMINI_API_KEY (I will use a built-in message). '}
+          {!summary.email_configured && 'BREVO_API_KEY / BREVO_SENDER_EMAIL (sending is disabled).'}
+        </div>
+      )}
+
+      <section className="flex min-h-[320px] flex-1 flex-col gap-3 overflow-y-auto rounded-3xl border border-white/10 bg-black/30 p-4">
+        {log.map((item) =>
+          item.kind === 'text' ? (
+            <Bubble key={item.id} role={item.role} tone={item.tone}>
+              {item.text}
+            </Bubble>
+          ) : (
+            <div key={item.id} className="flex items-start gap-2.5">
+              <BotAvatar size={28} />
+              <div className="w-full max-w-[90%] space-y-2">
+                <p className="text-xs text-secondaryText">
+                  {item.fallback ? 'Gemini was unavailable, so I used the built-in message:' : 'Here is what I wrote with Gemini:'}
+                </p>
+                <div className="overflow-hidden rounded-2xl bg-white text-gray-900 shadow-lg">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs text-gray-500">
+                    <p>
+                      <span className="font-semibold text-gray-700">From:</span> Fundry
+                    </p>
+                    <p>
+                      <span className="font-semibold text-gray-700">Subject:</span> {item.subject}
+                    </p>
+                  </div>
+                  <p className="whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed">{item.body}</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold">{summary.pending}</p>
-              <p className="text-xs text-secondaryText">Pending</p>
+          )
+        )}
+
+        {stage !== 'idle' && (
+          <Bubble role="bot">
+            <div className="flex items-center gap-2">
+              <span>{stage === 'writing' ? 'Writing the announcement' : 'Sending to the waitlist'}</span>
+              <TypingDots />
             </div>
+          </Bubble>
+        )}
+        <div ref={endRef} />
+      </section>
+
+      <div className="space-y-2">
+        {draft ? (
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={onPreview}
+              disabled={stage !== 'idle'}
+              className="rounded-2xl border border-white/15 bg-white/5 px-3 py-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              ↻ Rewrite
+            </button>
+            <button onClick={onSend} disabled={!canSend} className="col-span-2 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 px-5 py-4 text-base font-semibold text-white shadow-lg shadow-blue-900/30 transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50">
+              {stage === 'sending' ? 'Sending…' : `🚀 Send to ${summary?.next_batch ?? 0}`}
+            </button>
           </div>
-
-          {notReady && (
-            <p className="text-sm text-error">
-              Missing server config: {!summary.gemini_configured && 'GEMINI_API_KEY (a built-in message will be used) '}
-              {!summary.email_configured && 'BREVO_API_KEY / BREVO_SENDER_EMAIL (sending is disabled)'}
-            </p>
-          )}
-
-          <Button onClick={onSend} disabled={isSending || summary.next_batch === 0 || !summary.email_configured}>
-            {isSending
-              ? 'Writing and sending...'
-              : summary.next_batch === 0
-                ? 'Everyone has been notified'
-                : `Send launch email to ${summary.next_batch} people`}
-          </Button>
-          <p className="text-xs text-secondaryText">
-            Sends at most {summary.max_per_send} per click. Click again for the next batch — anyone already emailed is skipped.
+        ) : (
+          <button onClick={onPreview} disabled={!canPreview} className="w-full rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 px-5 py-4 text-base font-semibold text-white shadow-lg shadow-blue-900/30 transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50">
+            {stage !== 'idle'
+              ? 'Working…'
+              : !summary
+                ? 'Loading…'
+                : summary.next_batch === 0
+                  ? 'Everyone has been notified'
+                  : '✍️ Preview email'}
+          </button>
+        )}
+        {summary && (
+          <p className="text-center text-xs text-secondaryText">
+            Up to {summary.max_per_send} emails per send. Anyone already emailed is skipped.
           </p>
-        </section>
-      )}
-
-      {result && (
-        <section className="space-y-3 rounded-card border border-borderColor bg-cardBg p-6">
-          <p className="font-medium text-success">
-            Sent to {result.sent} people · {result.remaining} still pending{result.failed > 0 ? ` · ${result.failed} bad addresses skipped` : ''}
-          </p>
-          {result.used_fallback && (
-            <p className="text-sm text-secondaryText">Gemini was unavailable, so the built-in message was used.</p>
-          )}
-          {result.warning && <p className="text-sm text-error">{result.warning}</p>}
-          <p className="text-sm font-semibold">Subject: {result.subject}</p>
-          <p className="whitespace-pre-wrap text-sm text-secondaryText">{result.body}</p>
-        </section>
-      )}
+        )}
+      </div>
     </main>
   );
 }
