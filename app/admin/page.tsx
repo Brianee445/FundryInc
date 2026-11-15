@@ -37,6 +37,9 @@ type LogItem =
   | { id: number; kind: 'text'; role: 'bot' | 'user'; text: string; tone?: 'error' | 'success' }
   | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean };
 
+// Omit<> on a union collapses it, so strip `id` from each member separately.
+type LogInput = LogItem extends infer T ? (T extends { id: number } ? Omit<T, 'id'> : never) : never;
+
 class AdminAuthError extends Error {}
 
 async function adminFetch<T>(path: string, token: string | null, init: RequestInit = {}): Promise<T> {
@@ -132,7 +135,7 @@ export default function AdminPage() {
   const endRef = useRef<HTMLDivElement>(null);
   const greeted = useRef(false);
 
-  const push = useCallback((item: Omit<LogItem, 'id'>) => {
+  const push = useCallback((item: LogInput) => {
     setLog((l) => [...l, { ...item, id: nextId.current++ } as LogItem]);
   }, []);
 
