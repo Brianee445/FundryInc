@@ -31,11 +31,12 @@ interface PreviewResult {
   subject: string;
   body: string;
   used_fallback: boolean;
+  fallback_reason: string | null;
 }
 
 type LogItem =
   | { id: number; kind: 'text'; role: 'bot' | 'user'; text: string; tone?: 'error' | 'success' }
-  | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean };
+  | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean; reason?: string | null };
 
 // Omit<> on a union collapses it, so strip `id` from each member separately.
 type LogInput = LogItem extends infer T ? (T extends { id: number } ? Omit<T, 'id'> : never) : never;
@@ -216,7 +217,7 @@ export default function AdminPage() {
     try {
       const data = await adminFetch<PreviewResult>('/api/v1/admin/waitlist/preview-launch', token, { method: 'POST' });
       setDraft({ subject: data.subject, body: data.body, fallback: data.used_fallback });
-      push({ kind: 'email', subject: data.subject, body: data.body, fallback: data.used_fallback });
+      push({ kind: 'email', subject: data.subject, body: data.body, fallback: data.used_fallback, reason: data.fallback_reason });
       push({ kind: 'text', role: 'bot', text: 'That is the draft. Send it as is, or tap Rewrite for another version.' });
     } catch (err) {
       if (err instanceof AdminAuthError) logout(err.message);
@@ -343,6 +344,11 @@ export default function AdminPage() {
                 <p className="text-xs text-secondaryText">
                   {item.fallback ? 'Gemini was unavailable, so I used the built-in message:' : 'Here is what I wrote with Gemini:'}
                 </p>
+                {item.fallback && item.reason && (
+                  <p className="break-words rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+                    Why: {item.reason}
+                  </p>
+                )}
                 <div className="overflow-hidden rounded-2xl bg-white text-gray-900 shadow-lg">
                   <div className="border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs text-gray-500">
                     <p>
