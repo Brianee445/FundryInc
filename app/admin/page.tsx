@@ -8,6 +8,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const TOKEN_KEY = 'fundry_admin_token';
 
 interface Summary {
+  named: number;
   total: number;
   notified: number;
   pending: number;
@@ -27,16 +28,23 @@ interface SendResult {
   warning: string | null;
 }
 
+interface Sample {
+  email: string;
+  greeting: string;
+  company: string | null;
+}
+
 interface PreviewResult {
   subject: string;
   body: string;
   used_fallback: boolean;
   fallback_reason: string | null;
+  samples: Sample[];
 }
 
 type LogItem =
   | { id: number; kind: 'text'; role: 'bot' | 'user'; text: string; tone?: 'error' | 'success' }
-  | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean; reason?: string | null };
+  | { id: number; kind: 'email'; subject: string; body: string; fallback: boolean; reason?: string | null; samples?: Sample[] };
 
 // Omit<> on a union collapses it, so strip `id` from each member separately.
 type LogInput = LogItem extends infer T ? (T extends { id: number } ? Omit<T, 'id'> : never) : never;
@@ -131,6 +139,8 @@ export default function AdminPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [stage, setStage] = useState<'idle' | 'writing' | 'sending'>('idle');
   const [draft, setDraft] = useState<{ subject: string; body: string; fallback: boolean } | null>(null);
+  const [contactsText, setContactsText] = useState('');
+  const [isSavingContacts, setIsSavingContacts] = useState(false);
   const [log, setLog] = useState<LogItem[]>([]);
   const nextId = useRef(1);
   const endRef = useRef<HTMLDivElement>(null);
@@ -210,6 +220,32 @@ export default function AdminPage() {
     }
   };
 
+  const saveContacts = async () => {
+    if (!token || !contactsText.trim() || isSavingContacts) return;
+    setIsSavingContacts(true);
+    try {
+      const data = await adminFetch<{ updated: number; not_found: string[] }>('/api/v1/admin/waitlist/contacts', token, {
+        method: 'POST',
+        body: JSON.stringify({ rows: contactsText }),
+      });
+      setContactsText('');
+      push({
+        kind: 'text',
+        role: 'bot',
+        tone: data.updated > 0 ? 'success' : 'error',
+        text: `Saved names for ${data.updated} ${data.updated === 1 ? 'person' : 'people'}.${
+          data.not_found.length > 0 ? ` Not on the waitlist: ${data.not_found.join(', ')}.` : ''
+        }`,
+      });
+      loadSummary(token);
+    } catch (err) {
+      if (err instanceof AdminAuthError) logout(err.message);
+      else push({ kind: 'text', role: 'bot', tone: 'error', text: err instanceof Error ? err.message : 'Could not save names.' });
+    } finally {
+      setIsSavingContacts(false);
+    }
+  };
+
   const onPreview = async () => {
     if (!token || stage !== 'idle') return;
     push({ kind: 'text', role: 'user', text: draft ? 'Write a different version' : 'Write the launch email' });
@@ -217,7 +253,7 @@ export default function AdminPage() {
     try {
       const data = await adminFetch<PreviewResult>('/api/v1/admin/waitlist/preview-launch', token, { method: 'POST' });
       setDraft({ subject: data.subject, body: data.body, fallback: data.used_fallback });
-      push({ kind: 'email', subject: data.subject, body: data.body, fallback: data.used_fallback, reason: data.fallback_reason });
+      push({ kind: 'email', subject: data.subject, body: data.body, fallback: data.used_fallback, reason: data.fallback_reason, samples: data.samples });
       push({ kind: 'text', role: 'bot', text: 'That is the draft. Send it as is, or tap Rewrite for another version.' });
     } catch (err) {
       if (err instanceof AdminAuthError) logout(err.message);
@@ -323,6 +359,27 @@ export default function AdminPage() {
         </div>
       )}
 
+      {summary && (
+        <details className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+          <summary className="cursor-pointer text-secondaryText">
+            Names on file: {summary.named} of {summary.total} (tap to add first names and investor companies)
+          </summary>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-secondaryText">One person per line: email, first name, company (company optional).</p>
+            <textarea
+              rows={5}
+              value={contactsText}
+              onChange={(e) => setContactsText(e.target.value)}
+              placeholder={'ada@example.com, Ada, Acme Ventures\nben@example.com, Ben'}
+              className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-white outline-none focus:border-blue-500"
+            />
+            <Button size="sm" onClick={saveContacts} disabled={isSavingContacts || !contactsText.trim()}>
+              {isSavingContacts ? 'Saving...' : 'Save names'}
+            </Button>
+          </div>
+        </details>
+      )}
+
       {needsSetup && summary && (
         <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-3 text-xs text-amber-200">
           Missing server config:{' '}
@@ -358,8 +415,23 @@ export default function AdminPage() {
                       <span className="font-semibold text-gray-700">Subject:</span> {item.subject}
                     </p>
                   </div>
-                  <p className="whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed">{item.body}</p>
+                  <div className="space-y-3 px-4 py-3 text-sm leading-relaxed">
+                    <p className="text-gray-500">Hi [first name],</p>
+                    <p className="whitespace-pre-wrap">{item.body}</p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <span className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Open Fundry</span>
+                      <span className="rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white">Follow us on X</span>
+                      <span className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white">Subscribe on YouTube</span>
+                    </div>
+                    <p>The Fundry Team</p>
+                  </div>
                 </div>
+                {item.samples && item.samples.length > 0 && (
+                  <p className="text-[11px] text-secondaryText">
+                    Greetings I&apos;ll use: {item.samples.map((x) => x.greeting.replace(/^Hi |,$/g, '')).join(', ')}
+                    {item.samples.some((x) => x.company) ? ' (investor company lines added where known)' : ''}
+                  </p>
+                )}
               </div>
             </div>
           )
