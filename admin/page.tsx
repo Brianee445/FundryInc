@@ -14,15 +14,17 @@ interface Summary {
   next_batch: number;
   max_per_send: number;
   gemini_configured: boolean;
-  resend_configured: boolean;
+  email_configured: boolean;
 }
 
 interface SendResult {
   sent: number;
+  failed: number;
   remaining: number;
   subject: string;
   body: string;
   used_fallback: boolean;
+  warning: string | null;
 }
 
 class AdminAuthError extends Error {}
@@ -148,7 +150,7 @@ export default function AdminPage() {
     );
   }
 
-  const notReady = summary && (!summary.gemini_configured || !summary.resend_configured);
+  const notReady = summary && (!summary.gemini_configured || !summary.email_configured);
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 px-6 py-10">
@@ -181,11 +183,11 @@ export default function AdminPage() {
           {notReady && (
             <p className="text-sm text-error">
               Missing server config: {!summary.gemini_configured && 'GEMINI_API_KEY (a built-in message will be used) '}
-              {!summary.resend_configured && 'RESEND_API_KEY / RESEND_FROM_EMAIL (sending is disabled)'}
+              {!summary.email_configured && 'BREVO_API_KEY / BREVO_SENDER_EMAIL (sending is disabled)'}
             </p>
           )}
 
-          <Button onClick={onSend} disabled={isSending || summary.next_batch === 0 || !summary.resend_configured}>
+          <Button onClick={onSend} disabled={isSending || summary.next_batch === 0 || !summary.email_configured}>
             {isSending
               ? 'Writing and sending...'
               : summary.next_batch === 0
@@ -201,11 +203,12 @@ export default function AdminPage() {
       {result && (
         <section className="space-y-3 rounded-card border border-borderColor bg-cardBg p-6">
           <p className="font-medium text-success">
-            Sent to {result.sent} people · {result.remaining} still pending
+            Sent to {result.sent} people · {result.remaining} still pending{result.failed > 0 ? ` · ${result.failed} bad addresses skipped` : ''}
           </p>
           {result.used_fallback && (
             <p className="text-sm text-secondaryText">Gemini was unavailable, so the built-in message was used.</p>
           )}
+          {result.warning && <p className="text-sm text-error">{result.warning}</p>}
           <p className="text-sm font-semibold">Subject: {result.subject}</p>
           <p className="whitespace-pre-wrap text-sm text-secondaryText">{result.body}</p>
         </section>
